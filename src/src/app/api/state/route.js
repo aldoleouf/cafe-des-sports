@@ -5,7 +5,7 @@ const KEY = "cafe-des-sports/state.json";
 const INITIAL = {
   people: ["Antoine", "Gilles", "Julien", "Pascal", "Seb"],
   balances: { Antoine: -263, Gilles: -143, Julien: -1874, Pascal: -429, Seb: 2709 },
-  transactions: [], reserve: ["Café"], advances: {}, advanceHistory: [], updatedAt: null
+  transactions: [], reserve: ["Café"], advances: {}, advanceHistory: [], stockHistory: [], updatedAt: null
 };
 export async function GET() {
   try {
@@ -17,7 +17,7 @@ export async function GET() {
     const value = await response.json();
     return NextResponse.json({
       ...INITIAL, ...value,
-      advances: value.advances || {}, advanceHistory: value.advanceHistory || []
+      advances: value.advances || {}, advanceHistory: value.advanceHistory || [], stockHistory: value.stockHistory || []
     }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ error: "Impossible de lire les comptes partagés" }, { status: 500 });
@@ -31,7 +31,7 @@ export async function POST(request) {
     }
     const updatedAt = new Date().toISOString();
     await put(KEY, JSON.stringify({
-      ...INITIAL, ...state, advances: state.advances || {}, advanceHistory: state.advanceHistory || [], updatedAt
+      ...INITIAL, ...state, advances: state.advances || {}, advanceHistory: state.advanceHistory || [], stockHistory: state.stockHistory || [], updatedAt
     }), {
       access: "public", addRandomSuffix: false, allowOverwrite: true,
       contentType: "application/json", cacheControlMaxAge: 0
