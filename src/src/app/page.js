@@ -19,6 +19,33 @@ const euro = (c) => (Math.abs(c || 0) / 100).toLocaleString("fr-FR", {
 const signed = (c) => (c > 0 ? "+" : c < 0 ? "−" : "") + euro(c);
 const target = (c) => Math.ceil(Math.abs(c) * 5 / 4);
 const dateLabel = (value) => new Date(value).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
+const localDateKey = () => {
+  const d = new Date();
+  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
+};
+function countStockDaysAfter(start, end, kind) {
+  if (!start || !end || start >= end) return 0;
+  const [sy, sm, sd] = start.split("-").map(Number);
+  const [ey, em, ed] = end.split("-").map(Number);
+  const cursor = new Date(sy, sm - 1, sd, 12);
+  const last = new Date(ey, em - 1, ed, 12);
+  let count = 0;
+  cursor.setDate(cursor.getDate() + 1);
+  while (cursor <= last) {
+    const day = cursor.getDay();
+    if (kind === "coffee" && day >= 1 && day <= 5) count++;
+    if (kind === "lunch" && day >= 1 && day <= 4) count++;
+    if (kind === "friday" && day === 5) count++;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+}
+function estimatedStock(snapshot, kind, peopleCount) {
+  if (!snapshot) return null;
+  const rate = kind === "coffee" ? 2 : 1;
+  const days = countStockDaysAfter(snapshot.date, localDateKey(), kind);
+  return Number(snapshot[kind] || 0) - days * rate * peopleCount;
+}
 
 function normalizeData(value) {
   const people = Array.isArray(value?.people) ? value.people : INITIAL.people;
@@ -66,7 +93,7 @@ export default function Home() {
   const [advanceHolder, setAdvanceHolder] = useState("Antoine");
   const [advanceAmount, setAdvanceAmount] = useState("");
   const [advanceNote, setAdvanceNote] = useState("");
-  const [advanceFrom, setAdvanceFrom] = useState("");
+  const [advanceFrom, setAdvanceFrom] = useState("");\n  const [stockCoffee, setStockCoffee] = useState("");\n  const [stockLunch, setStockLunch] = useState("");\n  const [stockFriday, setStockFriday] = useState("");
 
   const sync = useCallback(async (state) => {
     setBusy(true);
@@ -119,6 +146,29 @@ export default function Home() {
 
   const totalAdvance = useMemo(() => Object.values(data.advances || {})
     .reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0), [data.advances]);
+
+  const saveStockSnapshot = async (event) => {
+    event.preventDefault();
+    const values = [stockCoffee, stockLunch, stockFriday].map((value) => Number(String(value).replace(",", ".")));
+    if (values.some((value) => !Number.isFinite(value) || value < 0)) {
+      setMessage("Renseigne trois quantités positives ou nulles.");
+      return;
+    }
+    const snapshot = {
+      id: Date.now().toString(),
+      date: localDateKey(),
+      coffee: values[0],
+      lunch: values[1],
+      friday: values[2],
+      peopleCount: data.people.length
+    };
+    const stockHistory = [snapshot, ...(data.stockHistory || [])];
+    if (await sync({ ...data, stockHistory })) {
+      setStockCoffee("");
+      setStockLunch("");
+      setStockFriday("");
+    }
+  };
 
   const addPurchase = async (event) => {
     event.preventDefault();
@@ -338,7 +388,7 @@ export default function Home() {
         <button className={tab === "comptes" ? "active" : ""} onClick={() => setTab("comptes")}>Les comptes</button>
         <button className={tab === "achat" ? "active" : ""} onClick={() => setTab("achat")}>Nouvel achat</button>
         <button className={tab === "historique" ? "active" : ""} onClick={() => setTab("historique")}>Historique</button>
-        <button className={tab === "avances" ? "active" : ""} onClick={() => setTab("avances")}>Avances café</button>
+        <button className={tab === "avances" ? "active" : ""} onClick={() => setTab("avances")}>Avances</button>\n        <button className={tab === "stocks" ? "active" : ""} onClick={() => setTab("stocks")}>Stocks</button>
       </div>
 
       {!loaded && <p className="status">Chargement des comptes partagés…</p>}
@@ -466,6 +516,72 @@ export default function Home() {
           ) : <p className="empty">Pas encore d'achat enregistré.</p>}
         </section>
       )}
+
+      {tab === "stocks" && (() => {
+        const latest = data.stockHistory?.[0] || null;
+        const peopleCount = data.people.length;
+        const coffeeNow = estimatedStock(latest, "coffee", peopleCount);
+        const lunchNow = estimatedStock(latest, "lunch", peopleCount);
+        const fridayNow = estimatedStock(latest, "friday", peopleCount);
+        const stockCards = [
+          { key: "coffee", title: "Café", icon: "☕", rate: "2 par personne", days: "Du lundi au vendredi", value: coffeeNow },
+          { key: "lunch", title: "Chocolat du midi", icon: "🍫", rate: "1 par personne", days: "Du lundi au jeudi", value: lunchNow },
+          { key: "friday", title: "Chocolat du vendredi", icon: "🍫", rate: "1 par personne", days: "Chaque vendredi", value: fridayNow }
+        ];
+        return (
+          <>
+            <section className="panel next">
+              <p className="eyebrow">SUIVI AUTOMATIQUE DES STOCKS</p>
+              <h2>{peopleCount} participant{peopleCount > 1 ? "s" : ""} pris en compte</h2>
+              <p className="hint">Les consommations sont calculées automatiquement selon les jours écoulés, sans saisie quotidienne.</p>
+              {latest && <p className="hint">Dernier relevé : {new Date(latest.date + "T12:00:00").toLocaleDateString("fr-FR")}</p>}
+            </section>
+            <section className="panel">
+              <p className="eyebrow">ESTIMATION ACTUELLE</p>
+              <h2>Ce qu'il reste</h2>
+              <div className="stock-grid">
+                {stockCards.map((stock) => (
+                  <div className="stock-card" key={stock.key}>
+                    <div className="stock-card-title"><span>{stock.icon}</span><strong>{stock.title}</strong></div>
+                    {stock.value === null ? <b className="stock-number">—</b> : <b className={"stock-number " + (stock.value < 0 ? "negative" : stock.value <= peopleCount * 5 ? "low" : "positive")}>{stock.value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}</b>}
+                    <small>{stock.value === null ? "En attente du premier relevé" : "unités estimées restantes"}</small>
+                    <p>{stock.rate} · {stock.days}</p>
+                  </div>
+                ))}
+              </div>
+              {latest && <p className="hint">Estimation calculée depuis le dernier relevé, avec {peopleCount} participants enregistrés. Les stocks négatifs signalent une rupture théorique.</p>}
+            </section>
+            <section className="panel">
+              <p className="eyebrow">RELEVÉ HEBDOMADAIRE</p>
+              <h2>Mettre à jour les quantités</h2>
+              <p className="hint">Saisis le nombre approximatif d'unités ou de portions réellement restantes aujourd'hui. Cette saisie devient le nouveau point de départ des calculs.</p>
+              <form className="purchase" onSubmit={saveStockSnapshot}>
+                <label>☕ Café restant (nombre de cafés)
+                  <input inputMode="decimal" value={stockCoffee} onChange={(event) => setStockCoffee(event.target.value)} placeholder="Ex. 120" required />
+                </label>
+                <label>🍫 Chocolat du midi restant (portions)
+                  <input inputMode="decimal" value={stockLunch} onChange={(event) => setStockLunch(event.target.value)} placeholder="Ex. 35" required />
+                </label>
+                <label>🍫 Chocolat du vendredi restant (portions)
+                  <input inputMode="decimal" value={stockFriday} onChange={(event) => setStockFriday(event.target.value)} placeholder="Ex. 20" required />
+                </label>
+                <button className="primary wide" type="submit" disabled={busy}>{busy ? "Enregistrement…" : "Enregistrer le relevé"}</button>
+              </form>
+            </section>
+            <section className="panel">
+              <p className="eyebrow">ANCIENS RELEVÉS</p>
+              <h2>Historique des stocks</h2>
+              {data.stockHistory?.length ? <div className="history">
+                {data.stockHistory.map((entry) => (
+                  <div className="transaction" key={entry.id}>
+                    <div><strong>{new Date(entry.date + "T12:00:00").toLocaleDateString("fr-FR")}</strong><p>☕ {entry.coffee} cafés · 🍫 {entry.lunch} chocolats du midi · 🍫 {entry.friday} chocolats du vendredi</p><small>{entry.peopleCount} participants au moment du relevé</small></div>
+                  </div>
+                ))}
+              </div> : <p className="empty">Aucun relevé enregistré pour le moment.</p>}
+            </section>
+          </>
+        );
+      })()}
 
       {tab === "avances" && (
         <>
