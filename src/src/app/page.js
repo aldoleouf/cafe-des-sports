@@ -93,7 +93,10 @@ export default function Home() {
   const [advanceHolder, setAdvanceHolder] = useState("Antoine");
   const [advanceAmount, setAdvanceAmount] = useState("");
   const [advanceNote, setAdvanceNote] = useState("");
-  const [advanceFrom, setAdvanceFrom] = useState("");\n  const [stockCoffee, setStockCoffee] = useState("");\n  const [stockLunch, setStockLunch] = useState("");\n  const [stockFriday, setStockFriday] = useState("");
+  const [advanceFrom, setAdvanceFrom] = useState("");
+  const [stockCoffee, setStockCoffee] = useState("");
+  const [stockLunch, setStockLunch] = useState("");
+  const [stockFriday, setStockFriday] = useState("");
 
   const sync = useCallback(async (state) => {
     setBusy(true);
@@ -388,7 +391,8 @@ export default function Home() {
         <button className={tab === "comptes" ? "active" : ""} onClick={() => setTab("comptes")}>Les comptes</button>
         <button className={tab === "achat" ? "active" : ""} onClick={() => setTab("achat")}>Nouvel achat</button>
         <button className={tab === "historique" ? "active" : ""} onClick={() => setTab("historique")}>Historique</button>
-        <button className={tab === "avances" ? "active" : ""} onClick={() => setTab("avances")}>Avances</button>\n        <button className={tab === "stocks" ? "active" : ""} onClick={() => setTab("stocks")}>Stocks</button>
+        <button className={tab === "avances" ? "active" : ""} onClick={() => setTab("avances")}>Avances</button>
+        <button className={tab === "stocks" ? "active" : ""} onClick={() => setTab("stocks")}>Stocks</button>
       </div>
 
       {!loaded && <p className="status">Chargement des comptes partagés…</p>}
