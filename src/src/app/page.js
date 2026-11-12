@@ -566,6 +566,9 @@ export default function Home() {
                   <div>
                     <strong>{transaction.buyer}</strong>
                     <p>{transaction.item}{transaction.note ? " · " + transaction.note : ""}</p>
+                    {(transaction.stockAdded && Object.values(transaction.stockAdded).some((quantity) => Number(quantity) > 0)) && (
+                      <p className="advance-detail">Stock ajouté : {[["coffee", "☕"], ["lunch", "🍫 midi"], ["friday", "🍫 vendredi"]].filter(([key]) => Number(transaction.stockAdded[key]) > 0).map(([key, label]) => label + " " + transaction.stockAdded[key]).join(" · ")}</p>
+                    )}
                     {transaction.advanceUsed > 0 && <p className="advance-detail">Dont {euro(transaction.advanceUsed)} pris sur l'avance de {transaction.advancePerson}{transaction.advanceHolder ? " (détenue par " + transaction.advanceHolder + ")" : ""}</p>}
                     <small>{dateLabel(transaction.date)}</small>
                   </div>
