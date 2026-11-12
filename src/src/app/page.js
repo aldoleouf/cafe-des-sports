@@ -21,15 +21,31 @@ const target = (c) => Math.ceil(Math.abs(c) * 5 / 4);
 const dateLabel = (value) => new Date(value).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
 
 function normalizeData(value) {
+  const people = Array.isArray(value?.people) ? value.people : INITIAL.people;
+  const advanceHistory = Array.isArray(value?.advanceHistory)
+    ? value.advanceHistory.map((entry) => ({
+        ...entry,
+        holder: entry.holder || entry.person,
+        remaining: Number.isFinite(Number(entry.remaining)) ? Math.max(0, Number(entry.remaining)) : Math.max(0, Number(entry.amount) || 0)
+      }))
+    : [];
+  const tracked = {};
+  advanceHistory.forEach((entry) => { tracked[entry.person] = (tracked[entry.person] || 0) + entry.remaining; });
+  Object.entries(value?.advances || {}).forEach(([person, total]) => {
+    const missing = Math.max(0, (Number(total) || 0) - (tracked[person] || 0));
+    if (missing > 0) advanceHistory.push({
+      id: "legacy-" + person, person, holder: person, amount: missing, remaining: missing,
+      note: "Ancienne avance", date: value?.updatedAt || new Date().toISOString(), legacy: true
+    });
+  });
+  const advances = {};
+  advanceHistory.forEach((entry) => { advances[entry.person] = (advances[entry.person] || 0) + entry.remaining; });
   return {
-    ...INITIAL,
-    ...(value || {}),
-    people: Array.isArray(value?.people) ? value.people : INITIAL.people,
+    ...INITIAL, ...(value || {}), people,
     balances: value?.balances && typeof value.balances === "object" ? value.balances : INITIAL.balances,
     transactions: Array.isArray(value?.transactions) ? value.transactions : [],
     reserve: Array.isArray(value?.reserve) ? value.reserve : ["Café"],
-    advances: value?.advances && typeof value.advances === "object" ? value.advances : {},
-    advanceHistory: Array.isArray(value?.advanceHistory) ? value.advanceHistory : []
+    advances, advanceHistory
   };
 }
 
@@ -47,6 +63,7 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [tab, setTab] = useState("comptes");
   const [advancePerson, setAdvancePerson] = useState("Gilles");
+  const [advanceHolder, setAdvanceHolder] = useState("Antoine");
   const [advanceAmount, setAdvanceAmount] = useState("");
   const [advanceNote, setAdvanceNote] = useState("");
   const [advanceFrom, setAdvanceFrom] = useState("");
@@ -82,6 +99,7 @@ export default function Home() {
       setReserve(raw.reserve);
       setBuyer((current) => raw.people.includes(current) ? current : (raw.people[0] || ""));
       setAdvancePerson((current) => raw.people.includes(current) ? current : (raw.people[0] || ""));
+      setAdvanceHolder((current) => raw.people.includes(current) ? current : (raw.people[0] || ""));
       setLoaded(true);
     } catch {
       setMessage("Impossible de charger les comptes partagés.");
@@ -115,36 +133,31 @@ export default function Home() {
       changes[person] = -(baseShare + (index < remainder ? 1 : 0));
     });
 
-    const available = advanceFrom ? Math.max(0, data.advances[advanceFrom] || 0) : 0;
+    const selectedAdvance = advanceFrom ? data.advanceHistory.find((entry) => entry.id === advanceFrom) : null;
+    const available = selectedAdvance ? Math.max(0, Number(selectedAdvance.remaining) || 0) : 0;
     const advanceUsed = Math.min(cents, available);
     changes[buyer] = (changes[buyer] || 0) + cents - advanceUsed;
-    if (advanceUsed && advanceFrom) changes[advanceFrom] = (changes[advanceFrom] || 0) + advanceUsed;
+    if (advanceUsed && selectedAdvance) changes[selectedAdvance.person] = (changes[selectedAdvance.person] || 0) + advanceUsed;
 
     const balances = { ...data.balances };
     participants.forEach((person) => {
       balances[person] = (balances[person] || 0) + (changes[person] || 0);
     });
-    const advances = { ...data.advances };
-    if (advanceUsed && advanceFrom) advances[advanceFrom] = available - advanceUsed;
+    const advanceHistory = data.advanceHistory.map((entry) => entry.id === advanceFrom
+      ? { ...entry, remaining: Math.max(0, entry.remaining - advanceUsed) }
+      : entry);
+    const advances = {};
+    advanceHistory.forEach((entry) => { advances[entry.person] = (advances[entry.person] || 0) + entry.remaining; });
 
     const transaction = {
-      id: Date.now().toString(),
-      buyer,
-      amount: cents,
-      item,
-      note: note.trim(),
-      date: new Date().toISOString(),
-      participants,
-      changes,
-      advancePerson: advanceUsed ? advanceFrom : null,
+      id: Date.now().toString(), buyer, amount: cents, item, note: note.trim(),
+      date: new Date().toISOString(), participants, changes,
+      advancePerson: advanceUsed && selectedAdvance ? selectedAdvance.person : null,
+      advanceHolder: advanceUsed && selectedAdvance ? selectedAdvance.holder : null,
+      advanceId: advanceUsed && selectedAdvance ? selectedAdvance.id : null,
       advanceUsed
     };
-    const next = {
-      ...data,
-      balances,
-      advances,
-      transactions: [transaction, ...data.transactions]
-    };
+    const next = { ...data, balances, advances, advanceHistory, transactions: [transaction, ...data.transactions] };
     if (await sync(next)) {
       setAmount("");
       setNote("");
@@ -155,20 +168,30 @@ export default function Home() {
   const addAdvance = async (event) => {
     event.preventDefault();
     const cents = Math.round(100 * Number(advanceAmount.replace(",", ".")));
-    if (!Number.isFinite(cents) || cents <= 0 || !advancePerson) return;
-    const advances = { ...data.advances, [advancePerson]: (data.advances[advancePerson] || 0) + cents };
+    if (!Number.isFinite(cents) || cents <= 0 || !advancePerson || !advanceHolder) return;
     const entry = {
-      id: Date.now().toString(),
-      person: advancePerson,
-      amount: cents,
-      note: advanceNote.trim(),
-      date: new Date().toISOString()
+      id: Date.now().toString(), person: advancePerson, holder: advanceHolder,
+      amount: cents, remaining: cents, note: advanceNote.trim(), date: new Date().toISOString()
     };
-    const next = { ...data, advances, advanceHistory: [entry, ...data.advanceHistory] };
-    if (await sync(next)) {
+    const advanceHistory = [entry, ...data.advanceHistory];
+    const advances = { ...data.advances, [advancePerson]: (data.advances[advancePerson] || 0) + cents };
+    if (await sync({ ...data, advances, advanceHistory })) {
       setAdvanceAmount("");
       setAdvanceNote("");
     }
+  };
+
+  const deleteAdvance = async (entry) => {
+    const used = Math.max(0, entry.amount - entry.remaining);
+    if (used > 0) {
+      alert("Cette avance a déjà servi à financer un achat. Annule d'abord les achats concernés avant de supprimer l'avance.");
+      return;
+    }
+    if (!confirm("Supprimer cette avance de " + euro(entry.amount) + " de " + entry.person + " remise à " + entry.holder + " ?")) return;
+    const advanceHistory = data.advanceHistory.filter((item) => item.id !== entry.id);
+    const advances = {};
+    advanceHistory.forEach((item) => { advances[item.person] = (advances[item.person] || 0) + item.remaining; });
+    await sync({ ...data, advances, advanceHistory });
   };
 
   const addPerson = async (event) => {
@@ -203,14 +226,20 @@ export default function Home() {
     Object.entries(transaction.changes || {}).forEach(([person, change]) => {
       balances[person] = (balances[person] || 0) - change;
     });
+    let advanceHistory = data.advanceHistory;
     const advances = { ...data.advances };
     if (transaction.advancePerson && transaction.advanceUsed) {
-      advances[transaction.advancePerson] = (advances[transaction.advancePerson] || 0) + transaction.advanceUsed;
+      if (transaction.advanceId) {
+        advanceHistory = data.advanceHistory.map((entry) => entry.id === transaction.advanceId
+          ? { ...entry, remaining: entry.remaining + transaction.advanceUsed } : entry);
+        Object.keys(advances).forEach((person) => { advances[person] = 0; });
+        advanceHistory.forEach((entry) => { advances[entry.person] = (advances[entry.person] || 0) + entry.remaining; });
+      } else {
+        advances[transaction.advancePerson] = (advances[transaction.advancePerson] || 0) + transaction.advanceUsed;
+      }
     }
     await sync({
-      ...data,
-      balances,
-      advances,
+      ...data, balances, advances, advanceHistory,
       transactions: data.transactions.filter((entry) => entry.id !== transaction.id)
     });
   };
@@ -395,12 +424,15 @@ export default function Home() {
             <label>Financé par une avance ?
               <select value={advanceFrom} onChange={(event) => setAdvanceFrom(event.target.value)}>
                 <option value="">Aucune avance</option>
-                {data.people.filter((person) => (data.advances[person] || 0) > 0).map((person) => (
-                  <option key={person} value={person}>Avance de {person} — {euro(data.advances[person])} disponible</option>
+                {data.advanceHistory.filter((entry) => entry.remaining > 0).map((entry) => (
+                  <option key={entry.id} value={entry.id}>Avance de {entry.person}, détenue par {entry.holder} — {euro(entry.remaining)} disponible</option>
                 ))}
               </select>
             </label>
-            {advanceFrom && <p className="hint">L'application utilisera automatiquement jusqu'à {euro(data.advances[advanceFrom] || 0)} de l'avance de {advanceFrom}. Le reste sera imputé à {buyer}.</p>}
+            {advanceFrom && (() => {
+              const selected = data.advanceHistory.find((entry) => entry.id === advanceFrom);
+              return selected ? <p className="hint">Jusqu'à {euro(selected.remaining)} seront pris sur l'argent de {selected.person}, actuellement détenu par {selected.holder}. La part financée sera comptabilisée au nom de {selected.person}.</p> : null;
+            })()}
             <label>Précision (facultatif)
               <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ex. deux cafés, un chocolat" />
             </label>
@@ -421,7 +453,7 @@ export default function Home() {
                   <div>
                     <strong>{transaction.buyer}</strong>
                     <p>{transaction.item}{transaction.note ? " · " + transaction.note : ""}</p>
-                    {transaction.advanceUsed > 0 && <p className="advance-detail">Dont {euro(transaction.advanceUsed)} pris sur l'avance de {transaction.advancePerson}</p>}
+                    {transaction.advanceUsed > 0 && <p className="advance-detail">Dont {euro(transaction.advanceUsed)} pris sur l'avance de {transaction.advancePerson}{transaction.advanceHolder ? " (détenue par " + transaction.advanceHolder + ")" : ""}</p>}
                     <small>{dateLabel(transaction.date)}</small>
                   </div>
                   <div className="transaction-end">
@@ -455,10 +487,15 @@ export default function Home() {
               <label>Montant reçu (€)
                 <input inputMode="decimal" value={advanceAmount} onChange={(event) => setAdvanceAmount(event.target.value)} placeholder="Ex. 100" required />
               </label>
+              <label>À qui l'argent a-t-il été remis ?
+                <select value={advanceHolder} onChange={(event) => setAdvanceHolder(event.target.value)}>
+                  {data.people.map((person) => <option key={person} value={person}>{person}</option>)}
+                </select>
+              </label>
               <label>Précision (facultatif)
                 <input value={advanceNote} onChange={(event) => setAdvanceNote(event.target.value)} placeholder="Ex. virement pour le café" />
               </label>
-              <p className="hint">Une avance ne modifie pas immédiatement les comptes du groupe. Elle devient une dépense commune payée par cette personne au fur et à mesure des achats financés avec cette avance.</p>
+              <p className="hint">L'argent reste la propriété de la personne qui fait l'avance. Le détenteur est simplement celui qui garde la somme pour les prochains achats. Lorsqu'elle est utilisée, la dépense commune est comptabilisée au nom de la personne qui a avancé l'argent.</p>
               <button className="primary wide" type="submit" disabled={busy}>{busy ? "Enregistrement…" : "Enregistrer l'avance"}</button>
             </form>
           </section>
@@ -481,16 +518,23 @@ export default function Home() {
             <h2>Historique des avances</h2>
             {data.advanceHistory.length ? (
               <div className="history">
-                {data.advanceHistory.map((entry) => (
-                  <div className="transaction" key={entry.id}>
-                    <div>
-                      <strong>{entry.person}</strong>
-                      <p>Virement reçu{entry.note ? " · " + entry.note : ""}</p>
-                      <small>{dateLabel(entry.date)}</small>
+                {data.advanceHistory.map((entry) => {
+                  const used = Math.max(0, entry.amount - entry.remaining);
+                  return (
+                    <div className="transaction" key={entry.id}>
+                      <div>
+                        <strong>{entry.person} a remis {euro(entry.amount)}</strong>
+                        <p>Argent détenu par {entry.holder}{entry.note ? " · " + entry.note : ""}</p>
+                        <small>{dateLabel(entry.date)} · {used > 0 ? euro(used) + " utilisés" : "Pas encore utilisé"}</small>
+                        <p className="advance-detail">Reste disponible : {euro(entry.remaining)}</p>
+                      </div>
+                      <div className="transaction-end">
+                        <b className="positive">+{euro(entry.amount)}</b>
+                        <button className="text-button" disabled={used > 0} onClick={() => deleteAdvance(entry)}>{used > 0 ? "Déjà utilisée" : "Supprimer"}</button>
+                      </div>
                     </div>
-                    <div className="transaction-end"><b className="positive">+{euro(entry.amount)}</b></div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : <p className="empty">Aucune avance enregistrée pour le moment.</p>}
             {data.transactions.some((entry) => entry.advanceUsed > 0) && (
@@ -498,7 +542,7 @@ export default function Home() {
                 <p className="eyebrow">AVANCES UTILISÉES DANS LES ACHATS</p>
                 {data.transactions.filter((entry) => entry.advanceUsed > 0).map((entry) => (
                   <div className="transaction" key={"spent-" + entry.id}>
-                    <div><strong>{entry.advancePerson}</strong><p>Achat collectif effectué par {entry.buyer}</p><small>{dateLabel(entry.date)}</small></div>
+                    <div><strong>{entry.advancePerson}</strong><p>{euro(entry.advanceUsed)} utilisés pour un achat collectif effectué par {entry.buyer}{entry.advanceHolder ? " · argent détenu par " + entry.advanceHolder : ""}</p><small>{dateLabel(entry.date)}</small></div>
                     <div className="transaction-end"><b>−{euro(entry.advanceUsed)}</b></div>
                   </div>
                 ))}
