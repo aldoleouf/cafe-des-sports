@@ -437,7 +437,15 @@ export default function Home() {
               <>
                 <h2>{nextBuyer}</h2>
                 <p className="amount">{euro(target(data.balances[nextBuyer]))} <small>à dépenser pour compenser</small></p>
-                <p className="hint">Idéalement en {reserve.length ? reserve.join(" et ").toLowerCase() : "café"}</p>
+                {latestStock ? (
+                  <p className="hint">
+                    {stockPriorities.length
+                      ? "À acheter en priorité : " + stockPriorities.join(" et ").toLowerCase() + "."
+                      : "Stocks suffisants : aucun achat urgent pour le moment."}
+                  </p>
+                ) : (
+                  <p className="hint">Idéalement en {reserve.length ? reserve.join(" et ").toLowerCase() : "café"}</p>
+                )}
               </>
             ) : <h2>Tout le monde est à jour !</h2>}
           </section>
