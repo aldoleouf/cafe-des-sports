@@ -25,7 +25,7 @@ function normalizeData(value) {
   const advanceHistory = Array.isArray(value?.advanceHistory)
     ? value.advanceHistory.map((entry) => ({
         ...entry,
-        holder: entry.holder || entry.person,
+        holder: entry.holder || (people.includes("Antoine") ? "Antoine" : entry.person),
         remaining: Number.isFinite(Number(entry.remaining)) ? Math.max(0, Number(entry.remaining)) : Math.max(0, Number(entry.amount) || 0)
       }))
     : [];
@@ -473,6 +473,21 @@ export default function Home() {
             <p className="eyebrow">AVANCES DISPONIBLES POUR LES PROCHAINS ACHATS</p>
             <p className="amount">{euro(totalAdvance)}</p>
             <p className="hint">Somme encore disponible pour acheter du café ou du chocolat pour le groupe.</p>
+          </section>
+
+          <section className="panel">
+            <p className="eyebrow">QUI DÉTIENT L'ARGENT ?</p>
+            <h2>Argent confié</h2>
+            {data.advanceHistory.filter((entry) => entry.remaining > 0).length ? (
+              <div className="people">
+                {data.advanceHistory.filter((entry) => entry.remaining > 0).map((entry) => (
+                  <div className="person" key={"holder-" + entry.id}>
+                    <div><strong>{entry.holder} détient l'argent de {entry.person}</strong><small>Somme confiée encore disponible</small></div>
+                    <div className="balance"><b className="positive">{euro(entry.remaining)}</b></div>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="empty">Aucune somme confiée en attente d'achat.</p>}
           </section>
 
           <section className="panel">
