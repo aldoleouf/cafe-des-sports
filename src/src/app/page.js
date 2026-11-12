@@ -40,11 +40,16 @@ function countStockDaysAfter(start, end, kind) {
   }
   return count;
 }
-function estimatedStock(snapshot, kind, peopleCount) {
+function estimatedStock(snapshot, transactions, kind, peopleCount) {
   if (!snapshot) return null;
   const rate = kind === "coffee" ? 2 : 1;
   const days = countStockDaysAfter(snapshot.date, localDateKey(), kind);
-  return Number(snapshot[kind] || 0) - days * rate * peopleCount;
+  const cutoff = new Date(snapshot.recordedAt || (snapshot.date + "T23:59:59.999")).getTime();
+  const added = (transactions || []).reduce((sum, transaction) => {
+    const time = new Date(transaction.date || 0).getTime();
+    return time > cutoff ? sum + Math.max(0, Number(transaction.stockAdded?.[kind]) || 0) : sum;
+  }, 0);
+  return Number(snapshot[kind] || 0) + added - days * rate * peopleCount;
 }
 
 function normalizeData(value) {
@@ -97,6 +102,9 @@ export default function Home() {
   const [stockCoffee, setStockCoffee] = useState("");
   const [stockLunch, setStockLunch] = useState("");
   const [stockFriday, setStockFriday] = useState("");
+  const [addedCoffee, setAddedCoffee] = useState("0");
+  const [addedLunch, setAddedLunch] = useState("0");
+  const [addedFriday, setAddedFriday] = useState("0");
 
   const sync = useCallback(async (state) => {
     setBusy(true);
@@ -150,6 +158,18 @@ export default function Home() {
   const totalAdvance = useMemo(() => Object.values(data.advances || {})
     .reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0), [data.advances]);
 
+  const latestStock = data.stockHistory?.[0] || null;
+  const liveStocks = {
+    coffee: estimatedStock(latestStock, data.transactions, "coffee", data.people.length),
+    lunch: estimatedStock(latestStock, data.transactions, "lunch", data.people.length),
+    friday: estimatedStock(latestStock, data.transactions, "friday", data.people.length)
+  };
+  const stockPriorities = latestStock ? [
+    ...(liveStocks.coffee !== null && liveStocks.coffee <= data.people.length * 10 ? ["Café"] : []),
+    ...(liveStocks.lunch !== null && liveStocks.lunch <= data.people.length * 4 ? ["Chocolat du midi"] : []),
+    ...(liveStocks.friday !== null && liveStocks.friday <= data.people.length ? ["Chocolat du vendredi"] : [])
+  ] : [];
+
   const saveStockSnapshot = async (event) => {
     event.preventDefault();
     const values = [stockCoffee, stockLunch, stockFriday].map((value) => Number(String(value).replace(",", ".")));
@@ -163,7 +183,8 @@ export default function Home() {
       coffee: values[0],
       lunch: values[1],
       friday: values[2],
-      peopleCount: data.people.length
+      peopleCount: data.people.length,
+      recordedAt: new Date().toISOString()
     };
     const stockHistory = [snapshot, ...(data.stockHistory || [])];
     if (await sync({ ...data, stockHistory })) {
@@ -177,6 +198,13 @@ export default function Home() {
     event.preventDefault();
     const cents = Math.round(100 * Number(amount.replace(",", ".")));
     if (!Number.isFinite(cents) || cents <= 0 || !buyer) return;
+
+    const additions = [addedCoffee, addedLunch, addedFriday].map((value) => Number(String(value || "0").replace(",", ".")));
+    if (additions.some((value) => !Number.isFinite(value) || value < 0)) {
+      setMessage("Les quantités ajoutées doivent être positives ou nulles.");
+      return;
+    }
+    const stockAdded = { coffee: additions[0], lunch: additions[1], friday: additions[2] };
 
     const participants = [...data.people];
     const baseShare = Math.floor(cents / participants.length);
@@ -208,13 +236,17 @@ export default function Home() {
       advancePerson: advanceUsed && selectedAdvance ? selectedAdvance.person : null,
       advanceHolder: advanceUsed && selectedAdvance ? selectedAdvance.holder : null,
       advanceId: advanceUsed && selectedAdvance ? selectedAdvance.id : null,
-      advanceUsed
+      advanceUsed,
+      stockAdded
     };
     const next = { ...data, balances, advances, advanceHistory, transactions: [transaction, ...data.transactions] };
     if (await sync(next)) {
       setAmount("");
       setNote("");
       setAdvanceFrom("");
+      setAddedCoffee("0");
+      setAddedLunch("0");
+      setAddedFriday("0");
     }
   };
 
@@ -440,15 +472,29 @@ export default function Home() {
             </div>
             <div className="reserve">
               <p className="eyebrow">APPROCHE FIN DE RÉSERVE</p>
-              <p>Pour les prochains achats, privilégier :</p>
-              <div className="choices">
-                {["Café", "Chocolat"].map((value) => (
-                  <button type="button" key={value} className={reserve.includes(value) ? "choice active" : "choice"} onClick={() => toggleReserve(value)}>
-                    {value === "Café" ? "☕ " : "🍫 "}{value}
-                  </button>
-                ))}
-              </div>
-              <p className="tiny">Tu peux sélectionner le café, le chocolat ou les deux.</p>
+              {latestStock ? (
+                <>
+                  <p>Priorité calculée automatiquement à partir des stocks et de la consommation hebdomadaire :</p>
+                  <div className="choices">
+                    {stockPriorities.length ? stockPriorities.map((value) => (
+                      <span className="choice active" key={value}>{value === "Café" ? "☕ " : "🍫 "}{value}</span>
+                    )) : <span className="choice">Stocks suffisants</span>}
+                  </div>
+                  <p className="tiny">Seuils : une semaine de consommation estimée pour chaque produit. Café : {liveStocks.coffee?.toLocaleString("fr-FR") ?? "—"} restant · Chocolat midi : {liveStocks.lunch?.toLocaleString("fr-FR") ?? "—"} · Chocolat vendredi : {liveStocks.friday?.toLocaleString("fr-FR") ?? "—"}.</p>
+                </>
+              ) : (
+                <>
+                  <p>Pour les prochains achats, privilégier :</p>
+                  <div className="choices">
+                    {["Café", "Chocolat"].map((value) => (
+                      <button type="button" key={value} className={reserve.includes(value) ? "choice active" : "choice"} onClick={() => toggleReserve(value)}>
+                        {value === "Café" ? "☕ " : "🍫 "}{value}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="tiny">Le conseil sera automatique dès le premier relevé de stock.</p>
+                </>
+              )}
             </div>
           </section>
         </>
@@ -475,6 +521,19 @@ export default function Home() {
                 <option>Autre</option>
               </select>
             </label>
+            <div className="stock-additions">
+              <p className="eyebrow">QUANTITÉS AJOUTÉES AUX STOCKS</p>
+              <p className="hint">Indique les quantités achetées pour mettre à jour les stocks. Laisse 0 si le produit n'est pas concerné.</p>
+              <label>☕ Nombre de cafés ajoutés
+                <input inputMode="decimal" value={addedCoffee} onChange={(event) => setAddedCoffee(event.target.value)} placeholder="0" />
+              </label>
+              <label>🍫 Chocolats du midi ajoutés
+                <input inputMode="decimal" value={addedLunch} onChange={(event) => setAddedLunch(event.target.value)} placeholder="0" />
+              </label>
+              <label>🍫 Chocolats du vendredi ajoutés
+                <input inputMode="decimal" value={addedFriday} onChange={(event) => setAddedFriday(event.target.value)} placeholder="0" />
+              </label>
+            </div>
             <label>Financé par une avance ?
               <select value={advanceFrom} onChange={(event) => setAdvanceFrom(event.target.value)}>
                 <option value="">Aucune avance</option>
@@ -524,9 +583,9 @@ export default function Home() {
       {tab === "stocks" && (() => {
         const latest = data.stockHistory?.[0] || null;
         const peopleCount = data.people.length;
-        const coffeeNow = estimatedStock(latest, "coffee", peopleCount);
-        const lunchNow = estimatedStock(latest, "lunch", peopleCount);
-        const fridayNow = estimatedStock(latest, "friday", peopleCount);
+        const coffeeNow = estimatedStock(latest, data.transactions, "coffee", peopleCount);
+        const lunchNow = estimatedStock(latest, data.transactions, "lunch", peopleCount);
+        const fridayNow = estimatedStock(latest, data.transactions, "friday", peopleCount);
         const stockCards = [
           { key: "coffee", title: "Café", icon: "☕", rate: "2 par personne", days: "Du lundi au vendredi", value: coffeeNow },
           { key: "lunch", title: "Chocolat du midi", icon: "🍫", rate: "1 par personne", days: "Du lundi au jeudi", value: lunchNow },
