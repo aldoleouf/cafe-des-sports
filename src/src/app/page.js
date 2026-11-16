@@ -52,6 +52,32 @@ function estimatedStock(snapshot, transactions, kind, peopleCount) {
   return Number(snapshot[kind] || 0) + added - days * rate * peopleCount;
 }
 
+function estimateStockDepletion(stock, kind, peopleCount) {
+  if (stock === null || !Number.isFinite(Number(stock)) || peopleCount <= 0) return null;
+  if (stock <= 0) return { date: null, consumptionDays: 0 };
+  const dailyRate = peopleCount * (kind === "coffee" ? 2 : 1);
+  const cursor = new Date();
+  cursor.setHours(12, 0, 0, 0);
+  let remaining = Number(stock);
+  let consumptionDays = 0;
+  for (let i = 0; i < 3650; i++) {
+    cursor.setDate(cursor.getDate() + 1);
+    const day = cursor.getDay();
+    const consumes = kind === "coffee"
+      ? day >= 1 && day <= 5
+      : kind === "lunch"
+        ? day >= 1 && day <= 4
+        : day === 5;
+    if (!consumes) continue;
+    consumptionDays++;
+    remaining -= dailyRate;
+    if (remaining <= 0) {
+      return { date: new Date(cursor), consumptionDays };
+    }
+  }
+  return null;
+}
+
 function normalizeData(value) {
   const people = Array.isArray(value?.people) ? value.people : INITIAL.people;
   const advanceHistory = Array.isArray(value?.advanceHistory)
@@ -614,14 +640,24 @@ export default function Home() {
               <p className="eyebrow">ESTIMATION ACTUELLE</p>
               <h2>Ce qu'il reste</h2>
               <div className="stock-grid">
-                {stockCards.map((stock) => (
-                  <div className="stock-card" key={stock.key}>
-                    <div className="stock-card-title"><span>{stock.icon}</span><strong>{stock.title}</strong></div>
-                    {stock.value === null ? <b className="stock-number">—</b> : <b className={"stock-number " + (stock.value < 0 ? "negative" : stock.value <= peopleCount * 5 ? "low" : "positive")}>{stock.value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}</b>}
-                    <small>{stock.value === null ? "En attente du premier relevé" : "unités estimées restantes"}</small>
-                    <p>{stock.rate} · {stock.days}</p>
-                  </div>
-                ))}
+                {stockCards.map((stock) => {
+                  const depletion = estimateStockDepletion(stock.value, stock.key, peopleCount);
+                  return (
+                    <div className="stock-card" key={stock.key}>
+                      <div className="stock-card-title"><span>{stock.icon}</span><strong>{stock.title}</strong></div>
+                      {stock.value === null ? <b className="stock-number">—</b> : <b className={"stock-number " + (stock.value < 0 ? "negative" : stock.value <= peopleCount * 5 ? "low" : "positive")}>{stock.value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}</b>}
+                      <small>{stock.value === null ? "En attente du premier relevé" : "unités estimées restantes"}</small>
+                      <p>{stock.rate} · {stock.days}</p>
+                      {depletion && (
+                        <p className="stock-estimate">
+                          {depletion.date
+                            ? <>Épuisement estimé : <strong>{depletion.date.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</strong><br />Dans {depletion.consumptionDays} jour{depletion.consumptionDays > 1 ? "s" : ""} de consommation</>
+                            : <strong>Rupture théorique déjà atteinte</strong>}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
               {latest && <p className="hint">Estimation calculée depuis le dernier relevé, avec {peopleCount} participants enregistrés. Les stocks négatifs signalent une rupture théorique.</p>}
             </section>
