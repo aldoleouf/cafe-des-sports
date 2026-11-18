@@ -648,10 +648,12 @@ export default function Home() {
                       {stock.value === null ? <b className="stock-number">—</b> : <b className={"stock-number " + (stock.value < 0 ? "negative" : stock.value <= peopleCount * 5 ? "low" : "positive")}>{stock.value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}</b>}
                       <small>{stock.value === null ? "En attente du premier relevé" : "unités estimées restantes"}</small>
                       <p>{stock.rate} · {stock.days}</p>
-                      {depletion && (
+                      {stock.value === null ? (
+                        <p className="stock-estimate">Date de fin estimée après le premier relevé de stock</p>
+                      ) : depletion && (
                         <p className="stock-estimate">
                           {depletion.date
-                            ? <>Épuisement estimé : <strong>{depletion.date.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</strong><br />Dans {depletion.consumptionDays} jour{depletion.consumptionDays > 1 ? "s" : ""} de consommation</>
+                            ? <>Fin estimée du stock : <strong>{depletion.date.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</strong><br />Dans {depletion.consumptionDays} jour{depletion.consumptionDays > 1 ? "s" : ""} de consommation</>
                             : <strong>Rupture théorique déjà atteinte</strong>}
                         </p>
                       )}
