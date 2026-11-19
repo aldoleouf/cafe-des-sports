@@ -446,14 +446,25 @@ export default function Home() {
       </header>
 
       <div className="tabs">
-        <button className={tab === "comptes" ? "active" : ""} onClick={() => setTab("comptes")}>Les comptes</button>
-        <button className={tab === "achat" ? "active" : ""} onClick={() => setTab("achat")}>Nouvel achat</button>
-        <button className={tab === "historique" ? "active" : ""} onClick={() => setTab("historique")}>Historique</button>
-        <button className={tab === "avances" ? "active" : ""} onClick={() => setTab("avances")}>Avances</button>
-        <button className={tab === "stocks" ? "active" : ""} onClick={() => setTab("stocks")}>Stocks</button>
+        {[
+          ["comptes", "🧾", "Comptes"],
+          ["achat", "☕", "Achat"],
+          ["historique", "📜", "Historique"],
+          ["avances", "💶", "Avances"],
+          ["stocks", "📦", "Stocks"]
+        ].map(([key, icon, label]) => (
+          <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}>
+            <span className="tab-icon" aria-hidden="true">{icon}</span>
+            <span className="tab-label">{label}</span>
+          </button>
+        ))}
       </div>
 
-      {!loaded && <p className="status">Chargement des comptes partagés…</p>}
+      {!loaded && (
+        <div className="skeleton" role="status" aria-label="Chargement des comptes partagés">
+          <i /><i /><i />
+        </div>
+      )}
 
       {tab === "comptes" && (
         <>
@@ -491,18 +502,24 @@ export default function Home() {
               </form>
             )}
             <div className="people">
-              {data.people.map((person) => (
+              {data.people.map((person) => {
+                const bal = data.balances[person] || 0;
+                const maxAbs = Math.max(100, ...data.people.map((p) => Math.abs(data.balances[p] || 0)));
+                return (
                 <div className="person" key={person}>
-                  <div>
+                  <div className={"avatar " + (bal < 0 ? "late" : bal > 0 ? "ahead" : "")} aria-hidden="true">{person.charAt(0).toUpperCase()}</div>
+                  <div className="person-main">
                     <strong>{person}</strong>
-                    <small>{(data.balances[person] || 0) < 0 ? "En retard" : (data.balances[person] || 0) > 0 ? "En avance" : "À jour"}</small>
+                    <small>{bal < 0 ? "En retard" : bal > 0 ? "En avance" : "À jour"}</small>
+                    <span className="meter"><i className={bal < 0 ? "late" : "ahead"} style={{ width: Math.round(Math.abs(bal) / maxAbs * 100) + "%" }} /></span>
                   </div>
                   <div className="balance">
                     <b className={(data.balances[person] || 0) < 0 ? "negative" : (data.balances[person] || 0) > 0 ? "positive" : ""}>{signed(data.balances[person] || 0)}</b>
                     {(data.balances[person] || 0) < 0 && <small className="target">À dépenser : {euro(target(data.balances[person]))}</small>}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
             <div className="reserve">
               <p className="eyebrow">APPROCHE FIN DE RÉSERVE</p>
