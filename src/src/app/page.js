@@ -173,8 +173,11 @@ export default function Home() {
 
   useEffect(() => {
     refresh();
-    const timer = setInterval(refresh, 20000);
-    return () => clearInterval(timer);
+    // Rafraîchit toutes les 20 s seulement si l'onglet est visible, et dès qu'on revient sur la page.
+    const timer = setInterval(() => { if (!document.hidden) refresh(); }, 20000);
+    const onVisible = () => { if (!document.hidden) refresh(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
   }, [refresh]);
 
   const nextBuyer = useMemo(() => data.people
