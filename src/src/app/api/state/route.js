@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadOrImport, setJson } from "../../../lib/redis";
+import { checkStockAlerts } from "../../../lib/push";
 export const dynamic = "force-dynamic";
 // Comptes partagés : clé cafe-des-sports:state dans Upstash Redis.
 // Repris une fois depuis l'ancien store Vercel Blob s'il n'existe pas encore ;
@@ -44,9 +45,12 @@ export async function POST(request) {
     }
     await loadOrImport(KEY, fromBlob); // la reprise depuis Blob doit avoir eu lieu avant d'écrire
     const updatedAt = new Date().toISOString();
-    await setJson(KEY, {
+    const saved = {
       ...INITIAL, ...state, advances: state.advances || {}, advanceHistory: state.advanceHistory || [], stockHistory: state.stockHistory || [], updatedAt
-    });
+    };
+    await setJson(KEY, saved);
+    // Un relevé de stock peut faire passer un produit sous un jour de consommation.
+    await checkStockAlerts(saved).catch((error) => console.error("Alerte de stock impossible :", error && error.message));
     return NextResponse.json({ ok: true, updatedAt });
   } catch (error) {
     return fail(error, "Impossible d'enregistrer les comptes partagés");

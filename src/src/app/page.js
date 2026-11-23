@@ -1,6 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { estimatedStock, estimateStockDepletion, localDateKey } from "../lib/stock";
+
+const base64ToBytes = (value) => {
+  const padded = (value + "=".repeat((4 - value.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/");
+  return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
+};
 
 const INITIAL = {
   people: ["Antoine", "Gilles", "Julien", "Pascal", "Seb"],
@@ -19,65 +25,6 @@ const euro = (c) => (Math.abs(c || 0) / 100).toLocaleString("fr-FR", {
 const signed = (c) => (c > 0 ? "+" : c < 0 ? "−" : "") + euro(c);
 const target = (c) => Math.ceil(Math.abs(c) * 5 / 4);
 const dateLabel = (value) => new Date(value).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
-const localDateKey = () => {
-  const d = new Date();
-  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
-};
-function countStockDaysAfter(start, end, kind) {
-  if (!start || !end || start >= end) return 0;
-  const [sy, sm, sd] = start.split("-").map(Number);
-  const [ey, em, ed] = end.split("-").map(Number);
-  const cursor = new Date(sy, sm - 1, sd, 12);
-  const last = new Date(ey, em - 1, ed, 12);
-  let count = 0;
-  cursor.setDate(cursor.getDate() + 1);
-  while (cursor <= last) {
-    const day = cursor.getDay();
-    if (kind === "coffee" && day >= 1 && day <= 5) count++;
-    if (kind === "lunch" && day >= 1 && day <= 4) count++;
-    if (kind === "friday" && day === 5) count++;
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return count;
-}
-function estimatedStock(snapshot, transactions, kind, peopleCount) {
-  if (!snapshot) return null;
-  const rate = kind === "coffee" ? 2 : 1;
-  const days = countStockDaysAfter(snapshot.date, localDateKey(), kind);
-  const cutoff = new Date(snapshot.recordedAt || (snapshot.date + "T23:59:59.999")).getTime();
-  const added = (transactions || []).reduce((sum, transaction) => {
-    const time = new Date(transaction.date || 0).getTime();
-    return time > cutoff ? sum + Math.max(0, Number(transaction.stockAdded?.[kind]) || 0) : sum;
-  }, 0);
-  return Number(snapshot[kind] || 0) + added - days * rate * peopleCount;
-}
-
-function estimateStockDepletion(stock, kind, peopleCount) {
-  if (stock === null || !Number.isFinite(Number(stock)) || peopleCount <= 0) return null;
-  if (stock <= 0) return { date: null, consumptionDays: 0 };
-  const dailyRate = peopleCount * (kind === "coffee" ? 2 : 1);
-  const cursor = new Date();
-  cursor.setHours(12, 0, 0, 0);
-  let remaining = Number(stock);
-  let consumptionDays = 0;
-  for (let i = 0; i < 3650; i++) {
-    cursor.setDate(cursor.getDate() + 1);
-    const day = cursor.getDay();
-    const consumes = kind === "coffee"
-      ? day >= 1 && day <= 5
-      : kind === "lunch"
-        ? day >= 1 && day <= 4
-        : day === 5;
-    if (!consumes) continue;
-    consumptionDays++;
-    remaining -= dailyRate;
-    if (remaining <= 0) {
-      return { date: new Date(cursor), consumptionDays };
-    }
-  }
-  return null;
-}
-
 function normalizeData(value) {
   const people = Array.isArray(value?.people) ? value.people : INITIAL.people;
   const advanceHistory = Array.isArray(value?.advanceHistory)
@@ -131,6 +78,8 @@ export default function Home() {
   const [addedCoffee, setAddedCoffee] = useState("0");
   const [addedLunch, setAddedLunch] = useState("0");
   const [addedFriday, setAddedFriday] = useState("0");
+  // Alertes push : "unsupported" | "ios" | "denied" | "off" | "on" | "busy"
+  const [pushState, setPushState] = useState("unsupported");
 
   const sync = useCallback(async (state) => {
     setBusy(true);
@@ -179,6 +128,62 @@ export default function Home() {
     document.addEventListener("visibilitychange", onVisible);
     return () => { clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
   }, [refresh]);
+
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    if (["comptes", "achat", "historique", "avances", "stocks"].includes(wanted)) setTab(wanted);
+    (async () => {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+        // Sur iPhone, les notifications n'existent que pour l'app ajoutée à l'écran d'accueil.
+        if (/iPhone|iPad|iPod/.test(navigator.userAgent)) setPushState("ios");
+        return;
+      }
+      if (Notification.permission === "denied") return setPushState("denied");
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        setPushState((await registration.pushManager.getSubscription()) ? "on" : "off");
+      } catch { setPushState("off"); }
+    })();
+  }, []);
+
+  const enableStockAlerts = async () => {
+    setPushState("busy");
+    try {
+      const { publicKey } = await (await fetch("/api/push", { cache: "no-store" })).json();
+      if (!publicKey) throw new Error("key");
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") return setPushState(permission === "denied" ? "denied" : "off");
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = (await registration.pushManager.getSubscription())
+        || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToBytes(publicKey) });
+      const response = await fetch("/api/push", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(subscription)
+      });
+      if (!response.ok) throw new Error("subscribe");
+      setPushState("on");
+      registration.showNotification("🔔 Alertes de stock activées", {
+        body: "Tu seras prévenu avant que le café ou le chocolat ne vienne à manquer.", icon: "/icon.svg", tag: "stock-welcome"
+      });
+    } catch {
+      setPushState("off");
+      setMessage("Impossible d'activer les notifications.");
+    }
+  };
+
+  const disableStockAlerts = async () => {
+    setPushState("busy");
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        await fetch("/api/push", {
+          method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: subscription.endpoint })
+        }).catch(() => {});
+        await subscription.unsubscribe();
+      }
+    } catch {}
+    setPushState("off");
+  };
 
   const nextBuyer = useMemo(() => data.people
     .filter((person) => (data.balances[person] || 0) < 0)
@@ -682,6 +687,23 @@ export default function Home() {
                 })}
               </div>
               {latest && <p className="hint">Estimation calculée depuis le dernier relevé, avec {peopleCount} participants enregistrés. Les stocks négatifs signalent une rupture théorique.</p>}
+            </section>
+            <section className="panel">
+              <p className="eyebrow">NOTIFICATIONS</p>
+              <h2>Alerte avant la rupture</h2>
+              <p className="hint">Une notification est envoyée sur ce téléphone quand il reste moins de 6 jours de café ou de chocolat du midi, ou moins de 2 vendredis de chocolat du vendredi.</p>
+              {pushState === "on" && <>
+                <p className="push-status">🔔 Alertes activées sur cet appareil</p>
+                <button type="button" className="text-button" onClick={disableStockAlerts}>Désactiver les alertes</button>
+              </>}
+              {(pushState === "off" || pushState === "busy") && (
+                <button type="button" className="share-button" onClick={enableStockAlerts} disabled={pushState === "busy"}>
+                  {pushState === "busy" ? "Activation…" : "🔔 Activer les alertes de stock"}
+                </button>
+              )}
+              {pushState === "denied" && <p className="tiny">Les notifications sont bloquées pour ce site. Autorise-les dans les réglages du navigateur, puis recharge la page.</p>}
+              {pushState === "ios" && <p className="tiny">Sur iPhone : touche Partager puis « Sur l'écran d'accueil », ouvre l'app depuis l'icône et reviens ici pour activer les alertes.</p>}
+              {pushState === "unsupported" && <p className="tiny">Ce navigateur ne permet pas les notifications.</p>}
             </section>
             <section className="panel">
               <p className="eyebrow">RELEVÉ HEBDOMADAIRE</p>

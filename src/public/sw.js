@@ -1,4 +1,4 @@
-const CACHE = "cafe-des-sports-v3";
+const CACHE = "cafe-des-sports-v4";
 self.addEventListener("install", (event) => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);
   try { await cache.add("/"); } catch {}
@@ -21,5 +21,23 @@ self.addEventListener("fetch", (event) => {
     } catch {
       return (await caches.match(request)) || (await caches.match("/"));
     }
+  })());
+});
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data && event.data.text() }; }
+  event.waitUntil(self.registration.showNotification(data.title || "Café des sports", {
+    body: data.body || "", tag: data.tag, renotify: Boolean(data.tag),
+    icon: "/icon.svg", badge: "/icon.svg", lang: "fr-FR", data: { url: data.url || "/" }
+  }));
+});
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin).href;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const open = windows.find((client) => new URL(client.url).origin === self.location.origin);
+    if (open) { await open.focus(); if ("navigate" in open) await open.navigate(url).catch(() => {}); return; }
+    await self.clients.openWindow(url);
   })());
 });
