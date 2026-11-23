@@ -2,9 +2,13 @@ import { NextResponse } from "next/server";
 import { vapidPublicKey, saveSubscription, removeSubscription } from "../../../lib/push";
 export const dynamic = "force-dynamic";
 
-// Clé publique VAPID dont le navigateur a besoin pour s'abonner (null si non configurée).
+// Clé publique VAPID dont le navigateur a besoin pour s'abonner.
 export async function GET() {
-  return NextResponse.json({ publicKey: vapidPublicKey() }, { headers: { "Cache-Control": "no-store" } });
+  try {
+    return NextResponse.json({ publicKey: await vapidPublicKey() }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    return NextResponse.json({ error: "Notifications indisponibles" }, { status: error?.status || 500 });
+  }
 }
 
 export async function POST(request) {

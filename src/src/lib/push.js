@@ -1,14 +1,26 @@
-// Notifications push (Web Push) quand un stock ne couvre plus qu'un jour.
-// Variables Vercel nécessaires : VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY
-// (générées avec `npx web-push generate-vapid-keys`), VAPID_SUBJECT facultatif.
+// Notifications push (Web Push) quand un stock passe sous ALERT_DAYS jours.
+// Aucune configuration : les clés VAPID sont créées au premier usage et gardées dans Redis.
+// (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY dans Vercel restent prioritaires si on les définit.)
 import { redis, getJson, setJson } from "./redis";
-import { lowStocks, parisDateKey } from "./stock";
+import { ALERT_DAYS, lowStocks, parisDateKey } from "./stock";
 
 const SUBSCRIPTIONS = "cafe-des-sports:push:subscriptions"; // hash endpoint → abonnement
 const ALERTED = "cafe-des-sports:push:alerted"; // produits déjà signalés { coffee: "2026-11-23" }
+const VAPID = "cafe-des-sports:push:vapid";
 
-export const vapidPublicKey = () => process.env.VAPID_PUBLIC_KEY || null;
-const configured = () => Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+async function vapidKeys() {
+  if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    return { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY };
+  }
+  const stored = await getJson(VAPID);
+  if (stored) return stored;
+  const webpush = (await import("web-push")).default;
+  // NX : si deux appels se croisent, une seule paire de clés est gardée.
+  await redis("SET", VAPID, JSON.stringify(webpush.generateVAPIDKeys()), "NX");
+  return getJson(VAPID);
+}
+
+export const vapidPublicKey = async () => (await vapidKeys()).publicKey;
 
 export async function saveSubscription(subscription) {
   await redis("HSET", SUBSCRIPTIONS, subscription.endpoint, JSON.stringify(subscription));
@@ -31,7 +43,8 @@ async function sendToAll(subscriptions, payload) {
   const webpush = (await import("web-push")).default;
   const subject = process.env.VAPID_SUBJECT
     || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? "https://" + process.env.VERCEL_PROJECT_PRODUCTION_URL : "mailto:cafe-des-sports@example.com");
-  webpush.setVapidDetails(subject, process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
+  const keys = await vapidKeys();
+  webpush.setVapidDetails(subject, keys.publicKey, keys.privateKey);
   let sent = 0;
   await Promise.all(subscriptions.map(async (subscription) => {
     try {
@@ -57,15 +70,14 @@ function messageFor(stock) {
     };
   }
   return {
-    title: stock.icon + " " + stock.label + " : plus qu'un jour de stock",
+    title: stock.icon + " " + stock.label + " : " + (stock.days > 1 ? "plus que " + stock.days + " jours" : "plus qu'un jour") + " de stock",
     body: "Il reste environ " + quantity + " unité" + (stock.value > 1 ? "s" : "") + ", de quoi tenir jusqu'au " + weekday(stock.lastDay) + ". Pensez à en racheter."
   };
 }
 
-// Envoie une notification pour chaque produit qui passe sous un jour de stock.
+// Envoie une notification pour chaque produit qui passe sous ALERT_DAYS jours de stock.
 // Un produit n'est signalé qu'une fois, jusqu'à ce que son stock remonte (achat ou relevé).
 export async function checkStockAlerts(state, now = new Date()) {
-  if (!configured()) return { skipped: "Clés VAPID absentes" };
   const today = parisDateKey(now);
   const low = lowStocks(state, today);
   const previous = (await getJson(ALERTED)) || {};

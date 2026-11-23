@@ -70,15 +70,19 @@ export function estimateStockDepletion(stock, kind, peopleCount, today = localDa
   return null;
 }
 
-// Produits dont le stock ne couvre plus qu'un jour de consommation (ou moins).
+// Alerte quand il reste moins de ALERT_DAYS jours de consommation.
+export const ALERT_DAYS = 6;
+
+// Produits dont le stock couvre moins de ALERT_DAYS jours de consommation (ou en rupture).
 export function lowStocks(state, today = localDateKey()) {
   const snapshot = state?.stockHistory?.[0];
   const peopleCount = Array.isArray(state?.people) ? state.people.length : 0;
   if (!snapshot || peopleCount <= 0) return [];
   return Object.keys(STOCK_KINDS).flatMap((kind) => {
     const value = estimatedStock(snapshot, state.transactions, kind, peopleCount, today);
-    if (value === null || value > dailyStockRate(kind, peopleCount)) return [];
+    if (value === null || value >= ALERT_DAYS * dailyStockRate(kind, peopleCount)) return [];
     const depletion = estimateStockDepletion(value, kind, peopleCount, today);
-    return [{ kind, ...STOCK_KINDS[kind], value, lastDay: depletion?.date || null }];
+    if (!depletion) return [];
+    return [{ kind, ...STOCK_KINDS[kind], value, days: depletion.consumptionDays, lastDay: depletion.date }];
   });
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { estimatedStock, estimateStockDepletion, localDateKey } from "../lib/stock";
+import { ALERT_DAYS, estimatedStock, estimateStockDepletion, localDateKey } from "../lib/stock";
 
 const base64ToBytes = (value) => {
   const padded = (value + "=".repeat((4 - value.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/");
@@ -78,7 +78,7 @@ export default function Home() {
   const [addedCoffee, setAddedCoffee] = useState("0");
   const [addedLunch, setAddedLunch] = useState("0");
   const [addedFriday, setAddedFriday] = useState("0");
-  // Alertes push : "unsupported" | "ios" | "unconfigured" | "denied" | "off" | "on" | "busy"
+  // Alertes push : "unsupported" | "ios" | "denied" | "off" | "on" | "busy"
   const [pushState, setPushState] = useState("unsupported");
 
   const sync = useCallback(async (state) => {
@@ -150,7 +150,7 @@ export default function Home() {
     setPushState("busy");
     try {
       const { publicKey } = await (await fetch("/api/push", { cache: "no-store" })).json();
-      if (!publicKey) return setPushState("unconfigured");
+      if (!publicKey) throw new Error("key");
       const permission = await Notification.requestPermission();
       if (permission !== "granted") return setPushState(permission === "denied" ? "denied" : "off");
       const registration = await navigator.serviceWorker.ready;
@@ -162,7 +162,7 @@ export default function Home() {
       if (!response.ok) throw new Error("subscribe");
       setPushState("on");
       registration.showNotification("🔔 Alertes de stock activées", {
-        body: "Tu seras prévenu dès qu'il ne restera plus qu'un jour de café ou de chocolat.", icon: "/icon.svg", tag: "stock-welcome"
+        body: "Tu seras prévenu dès qu'il restera moins de " + ALERT_DAYS + " jours de café ou de chocolat.", icon: "/icon.svg", tag: "stock-welcome"
       });
     } catch {
       setPushState("off");
@@ -691,7 +691,7 @@ export default function Home() {
             <section className="panel">
               <p className="eyebrow">NOTIFICATIONS</p>
               <h2>Alerte avant la rupture</h2>
-              <p className="hint">Une notification est envoyée sur ce téléphone quand un produit n'a plus qu'un jour de stock estimé.</p>
+              <p className="hint">Une notification est envoyée sur ce téléphone quand un produit a moins de {ALERT_DAYS} jours de stock estimé.</p>
               {pushState === "on" && <>
                 <p className="push-status">🔔 Alertes activées sur cet appareil</p>
                 <button type="button" className="text-button" onClick={disableStockAlerts}>Désactiver les alertes</button>
@@ -704,7 +704,6 @@ export default function Home() {
               {pushState === "denied" && <p className="tiny">Les notifications sont bloquées pour ce site. Autorise-les dans les réglages du navigateur, puis recharge la page.</p>}
               {pushState === "ios" && <p className="tiny">Sur iPhone : touche Partager puis « Sur l'écran d'accueil », ouvre l'app depuis l'icône et reviens ici pour activer les alertes.</p>}
               {pushState === "unsupported" && <p className="tiny">Ce navigateur ne permet pas les notifications.</p>}
-              {pushState === "unconfigured" && <p className="tiny">Les notifications ne sont pas encore configurées sur le serveur.</p>}
             </section>
             <section className="panel">
               <p className="eyebrow">RELEVÉ HEBDOMADAIRE</p>

@@ -8,11 +8,8 @@ Les comptes sont dans **Upstash Redis** (plan gratuit, clé `cafe-des-sports:sta
 
 ## Alertes de stock
 
-Quand un produit n'a plus qu'**un jour de stock estimé** (ou est en rupture), une notification push est envoyée aux appareils abonnés (onglet Stocks → « Activer les alertes de stock »). La vérification a lieu à chaque enregistrement et chaque matin vers 7 h (Vercel Cron, `vercel.json`). Chaque produit n'est signalé qu'une fois, jusqu'à ce que son stock remonte.
+Quand un produit a **moins de 6 jours de consommation estimés** (ou est en rupture), une notification push est envoyée aux appareils abonnés (onglet Stocks → « Activer les alertes de stock »). Le seuil se règle avec `ALERT_DAYS` dans `src/src/lib/stock.js`. La vérification a lieu à chaque enregistrement et chaque matin vers 7 h (Vercel Cron, `vercel.json`). Chaque produit n'est signalé qu'une fois, jusqu'à ce que son stock remonte au-dessus du seuil.
 
-Variables Vercel à ajouter :
-- `VAPID_PUBLIC_KEY` et `VAPID_PRIVATE_KEY` : générées avec `npx web-push generate-vapid-keys`
-- `CRON_SECRET` (conseillé) : n'importe quelle chaîne aléatoire, pour que seul Vercel puisse lancer la vérification
-- `VAPID_SUBJECT` (facultatif) : `mailto:…` ou l'URL du site
+Rien à configurer : les clés de notification sont créées automatiquement et gardées dans Upstash Redis.
 
 Sur iPhone, les notifications ne marchent que depuis l'app ajoutée à l'écran d'accueil (iOS 16.4+).
