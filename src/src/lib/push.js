@@ -1,8 +1,8 @@
-// Notifications push (Web Push) quand un stock passe sous ALERT_DAYS jours.
+// Notifications push (Web Push) quand un stock passe sous son seuil (alertDays dans lib/stock.js).
 // Aucune configuration : les clés VAPID sont créées au premier usage et gardées dans Redis.
 // (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY dans Vercel restent prioritaires si on les définit.)
 import { redis, getJson, setJson } from "./redis";
-import { ALERT_DAYS, lowStocks, parisDateKey } from "./stock";
+import { lowStocks, parisDateKey } from "./stock";
 
 const SUBSCRIPTIONS = "cafe-des-sports:push:subscriptions"; // hash endpoint → abonnement
 const ALERTED = "cafe-des-sports:push:alerted"; // produits déjà signalés { coffee: "2026-11-23" }
@@ -75,7 +75,7 @@ function messageFor(stock) {
   };
 }
 
-// Envoie une notification pour chaque produit qui passe sous ALERT_DAYS jours de stock.
+// Envoie une notification pour chaque produit qui passe sous son seuil de jours de stock.
 // Un produit n'est signalé qu'une fois, jusqu'à ce que son stock remonte (achat ou relevé).
 export async function checkStockAlerts(state, now = new Date()) {
   const today = parisDateKey(now);

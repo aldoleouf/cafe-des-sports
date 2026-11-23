@@ -3,9 +3,10 @@
 // du lundi au jeudi ; chocolat du vendredi : 1 par personne le vendredi.
 
 export const STOCK_KINDS = {
-  coffee: { label: "Café", icon: "☕", perPerson: 2 },
-  lunch: { label: "Chocolat du midi", icon: "🍫", perPerson: 1 },
-  friday: { label: "Chocolat du vendredi", icon: "🍫", perPerson: 1 }
+  // alertDays : alerte quand il reste moins de ce nombre de jours de consommation.
+  coffee: { label: "Café", icon: "☕", perPerson: 2, alertDays: 6 },
+  lunch: { label: "Chocolat du midi", icon: "🍫", perPerson: 1, alertDays: 6 },
+  friday: { label: "Chocolat du vendredi", icon: "🍫", perPerson: 1, alertDays: 2 } // 2 vendredis
 };
 
 export const localDateKey = (d = new Date()) =>
@@ -70,17 +71,14 @@ export function estimateStockDepletion(stock, kind, peopleCount, today = localDa
   return null;
 }
 
-// Alerte quand il reste moins de ALERT_DAYS jours de consommation.
-export const ALERT_DAYS = 6;
-
-// Produits dont le stock couvre moins de ALERT_DAYS jours de consommation (ou en rupture).
+// Produits dont le stock couvre moins de alertDays jours de consommation (ou en rupture).
 export function lowStocks(state, today = localDateKey()) {
   const snapshot = state?.stockHistory?.[0];
   const peopleCount = Array.isArray(state?.people) ? state.people.length : 0;
   if (!snapshot || peopleCount <= 0) return [];
   return Object.keys(STOCK_KINDS).flatMap((kind) => {
     const value = estimatedStock(snapshot, state.transactions, kind, peopleCount, today);
-    if (value === null || value >= ALERT_DAYS * dailyStockRate(kind, peopleCount)) return [];
+    if (value === null || value >= STOCK_KINDS[kind].alertDays * dailyStockRate(kind, peopleCount)) return [];
     const depletion = estimateStockDepletion(value, kind, peopleCount, today);
     if (!depletion) return [];
     return [{ kind, ...STOCK_KINDS[kind], value, days: depletion.consumptionDays, lastDay: depletion.date }];

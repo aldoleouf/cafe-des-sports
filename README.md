@@ -8,7 +8,7 @@ Les comptes sont dans **Upstash Redis** (plan gratuit, clé `cafe-des-sports:sta
 
 ## Alertes de stock
 
-Quand un produit a **moins de 6 jours de consommation estimés** (ou est en rupture), une notification push est envoyée aux appareils abonnés (onglet Stocks → « Activer les alertes de stock »). Le seuil se règle avec `ALERT_DAYS` dans `src/src/lib/stock.js`. La vérification a lieu à chaque enregistrement et chaque matin vers 7 h (Vercel Cron, `vercel.json`). Chaque produit n'est signalé qu'une fois, jusqu'à ce que son stock remonte au-dessus du seuil.
+Une notification push est envoyée aux appareils abonnés (onglet Stocks → « Activer les alertes de stock ») quand il reste **moins de 6 jours** de café ou de chocolat du midi, ou **moins de 2 vendredis** de chocolat du vendredi (ou en cas de rupture). Les seuils se règlent avec `alertDays` dans `src/src/lib/stock.js`. La vérification a lieu à chaque enregistrement et chaque matin vers 7 h (Vercel Cron, `vercel.json`). Chaque produit n'est signalé qu'une fois, jusqu'à ce que son stock remonte au-dessus du seuil.
 
 Rien à configurer : les clés de notification sont créées automatiquement et gardées dans Upstash Redis.
 

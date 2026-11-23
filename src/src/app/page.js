@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ALERT_DAYS, estimatedStock, estimateStockDepletion, localDateKey } from "../lib/stock";
+import { estimatedStock, estimateStockDepletion, localDateKey } from "../lib/stock";
 
 const base64ToBytes = (value) => {
   const padded = (value + "=".repeat((4 - value.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/");
@@ -162,7 +162,7 @@ export default function Home() {
       if (!response.ok) throw new Error("subscribe");
       setPushState("on");
       registration.showNotification("🔔 Alertes de stock activées", {
-        body: "Tu seras prévenu dès qu'il restera moins de " + ALERT_DAYS + " jours de café ou de chocolat.", icon: "/icon.svg", tag: "stock-welcome"
+        body: "Tu seras prévenu avant que le café ou le chocolat ne vienne à manquer.", icon: "/icon.svg", tag: "stock-welcome"
       });
     } catch {
       setPushState("off");
@@ -691,7 +691,7 @@ export default function Home() {
             <section className="panel">
               <p className="eyebrow">NOTIFICATIONS</p>
               <h2>Alerte avant la rupture</h2>
-              <p className="hint">Une notification est envoyée sur ce téléphone quand un produit a moins de {ALERT_DAYS} jours de stock estimé.</p>
+              <p className="hint">Une notification est envoyée sur ce téléphone quand il reste moins de 6 jours de café ou de chocolat du midi, ou moins de 2 vendredis de chocolat du vendredi.</p>
               {pushState === "on" && <>
                 <p className="push-status">🔔 Alertes activées sur cet appareil</p>
                 <button type="button" className="text-button" onClick={disableStockAlerts}>Désactiver les alertes</button>
