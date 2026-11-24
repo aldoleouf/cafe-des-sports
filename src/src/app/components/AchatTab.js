@@ -19,7 +19,7 @@ const FIELDS_BY_ITEM = {
 };
 const NO_STOCK = { coffee: "0", lunch: "0", friday: "0" };
 
-export default function AchatTab({ data, busy, mutate, editing, onDoneEditing, defaultBuyer, defaultItem }) {
+export default function AchatTab({ data, busy, mutate, editing, onDoneEditing, defaultBuyer, defaultItem, onSaved }) {
   const blank = () => ({
     buyer: defaultBuyer, amount: "", item: defaultItem, note: "", excluded: [], advanceFrom: "", added: NO_STOCK
   });
@@ -75,7 +75,7 @@ export default function AchatTab({ data, busy, mutate, editing, onDoneEditing, d
     const ok = await mutate((state) => editing ? editPurchase(state, editing.id, input) : applyPurchase(state, input));
     if (!ok) return;
     if (editing) onDoneEditing();
-    else { setForm(blank()); setTouched(false); flashDone(setDone); }
+    else { setForm(blank()); setTouched(false); flashDone(setDone); onSaved?.(input); }
   };
 
   return (

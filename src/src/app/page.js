@@ -11,11 +11,14 @@ import HistoriqueTab from "./components/HistoriqueTab";
 import AvancesTab from "./components/AvancesTab";
 import StocksTab from "./components/StocksTab";
 import ExportDialog from "./components/ExportDialog";
+import StatsTab from "./components/StatsTab";
+import { Ticket, Coins, Sugar } from "./components/Effects";
 
 const TABS = [
   ["comptes", "🧾", "Comptes"],
   ["achat", "☕", "Achat"],
   ["historique", "📜", "Historique"],
+  ["stats", "📊", "Stats"],
   ["avances", "💶", "Avances"],
   ["stocks", "📦", "Stocks"]
 ];
@@ -45,6 +48,31 @@ export default function Home() {
   const [direction, setDirection] = useState("right"); // sens du glissement entre onglets
   const [refreshing, setRefreshing] = useState(false);
   const [flash, setFlash] = useState({ names: [], key: 0 }); // montants modifiés par quelqu'un d'autre
+  const [ticket, setTicket] = useState(null);
+  const [sugar, setSugar] = useState(null);
+  const [coins, setCoins] = useState(null);
+  const [night, setNight] = useState(false);
+
+  // Après 18 h (et avant 6 h), l'en-tête passe en mode nuit.
+  useEffect(() => {
+    const update = () => { const hour = new Date().getHours(); setNight(hour >= 18 || hour < 6); };
+    update();
+    const timer = setInterval(update, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Effets éphémères : on les retire une fois l'animation terminée.
+  const show = (setter, value, duration) => {
+    const key = Date.now();
+    setter({ ...value, key });
+    setTimeout(() => setter((current) => current?.key === key ? null : current), duration);
+  };
+  const purchaseSaved = (input) => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    show(setTicket, input, 3400);
+    if (/café/i.test(input.item)) setTimeout(() => show(setSugar, {}, 1400), 350);
+  };
+  const advanceSaved = () => show(setCoins, {}, 2000);
   const push = usePushAlerts(setMessage);
 
   const setData = useCallback((value) => {
@@ -180,15 +208,18 @@ export default function Home() {
 
   return (
     <main className="shell">
-      <header className="hero">
+      <header className={"hero" + (night ? " night" : "")}>
         <div className="emblem">
-          <span className="steam" aria-hidden="true"><i /><i /><i /></span>
+          {night
+            ? <span className="moon" aria-hidden="true">🌙</span>
+            : <span className="steam" aria-hidden="true"><i /><i /><i /></span>}
+          <Sugar drop={sugar} />
           ☕
         </div>
         <div>
           <p className="eyebrow">LE COMPTOIR DES COPAINS</p>
           <h1>Café <span>des sports</span></h1>
-          <p className="subtitle">Les comptes du café et du chocolat, entre nous.</p>
+          <p className="subtitle">{night ? "Le comptoir ferme pour ce soir. À demain !" : "Les comptes du café et du chocolat, entre nous."}</p>
         </div>
         <div className="ball" key={tab} aria-hidden="true">⚽</div>
       </header>
@@ -215,10 +246,12 @@ export default function Home() {
           data={data} busy={busy} mutate={mutate}
           editing={editing} onDoneEditing={doneEditing}
           defaultBuyer={nextBuyer || data.people[0] || ""} defaultItem={defaultItem}
+          onSaved={purchaseSaved}
         />
       )}
       {tab === "historique" && <HistoriqueTab data={data} busy={busy} mutate={mutate} onEdit={startEditing} />}
-      {tab === "avances" && <AvancesTab data={data} busy={busy} mutate={mutate} />}
+      {tab === "stats" && <StatsTab data={data} />}
+      {tab === "avances" && <AvancesTab data={data} busy={busy} mutate={mutate} onSaved={advanceSaved} />}
       {tab === "stocks" && <StocksTab data={data} stocks={stocks} busy={busy} mutate={mutate} push={push} />}
       </div>
 
@@ -231,6 +264,8 @@ export default function Home() {
         </button>
       </footer>
       <ExportDialog data={data} open={exporting} onClose={() => setExporting(false)} />
+      <Ticket ticket={ticket} />
+      <Coins burst={coins} />
     </main>
   );
 }

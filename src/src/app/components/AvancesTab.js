@@ -11,7 +11,7 @@ const totalsFrom = (advanceHistory) => {
   return advances;
 };
 
-export default function AvancesTab({ data, busy, mutate }) {
+export default function AvancesTab({ data, busy, mutate, onSaved }) {
   const [person, setPerson] = useState(data.people.includes("Gilles") ? "Gilles" : data.people[0] || "");
   const [holder, setHolder] = useState(data.people.includes("Antoine") ? "Antoine" : data.people[0] || "");
   const [amount, setAmount] = useState("");
@@ -30,7 +30,7 @@ export default function AvancesTab({ data, busy, mutate }) {
       const advanceHistory = [entry, ...state.advanceHistory];
       return { ...state, advanceHistory, advances: totalsFrom(advanceHistory) };
     });
-    if (ok) { setAmount(""); setNote(""); flashDone(setDone); }
+    if (ok) { setAmount(""); setNote(""); flashDone(setDone); onSaved?.(entry); }
   };
 
   const deleteAdvance = async (entry) => {

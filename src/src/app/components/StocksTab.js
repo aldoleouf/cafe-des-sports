@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { STOCK_KINDS, localDateKey } from "../../lib/stock";
+import { STOCK_KINDS, localDateKey, referencePrices, restockSuggestion, upcomingHolidays } from "../../lib/stock";
 import { newId } from "../../lib/ledger";
-import { parseNumber } from "../../lib/format";
+import { parseNumber, euro, shortDate } from "../../lib/format";
 import SaveButton, { flashDone } from "./SaveButton";
 
 const RATES = {
@@ -18,6 +18,24 @@ const alertRule = (kind) => kind === "friday"
 export default function StocksTab({ data, stocks, busy, mutate, push }) {
   const [values, setValues] = useState({ coffee: "", lunch: "", friday: "" });
   const [done, setDone] = useState(false);
+  const [pauseForm, setPauseForm] = useState({ start: "", end: "", note: "" });
+  const [pauseDone, setPauseDone] = useState(false);
+  const prices = referencePrices(data.transactions);
+  const today = localDateKey();
+  const pauses = [...(data.pauses || [])].sort((a, b) => a.start.localeCompare(b.start));
+  const day = (key) => new Date(key + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+
+  const addPause = async (event) => {
+    event.preventDefault();
+    const { start, end, note } = pauseForm;
+    if (!start || !end || end < start) return mutate(() => "La date de fin doit être après la date de début.");
+    const entry = { id: newId(), start, end, note: note.trim() };
+    if (await mutate((state) => ({ ...state, pauses: [...(state.pauses || []), entry] }))) {
+      setPauseForm({ start: "", end: "", note: "" });
+      flashDone(setPauseDone);
+    }
+  };
+  const removePause = (id) => mutate((state) => ({ ...state, pauses: (state.pauses || []).filter((entry) => entry.id !== id) }));
   const latest = data.stockHistory?.[0] || null;
   const peopleCount = data.people.length;
 
@@ -64,6 +82,62 @@ export default function StocksTab({ data, stocks, busy, mutate, push }) {
         </div>
         {latest && <p className="hint">Estimation calculée depuis le dernier relevé, avec {peopleCount} participants enregistrés. Un produit passe en orange quand il en reste pour {alertRule("coffee")} (café, chocolat du midi) ou {alertRule("friday")} (chocolat du vendredi).</p>}
       </section>
+      <section className="panel">
+        <p className="eyebrow">PRIX DE RÉFÉRENCE</p>
+        <h2>Combien acheter ?</h2>
+        <p className="hint">Dernier prix payé, d'après les achats d'un seul produit avec les quantités renseignées.</p>
+        <div className="sheet-stats">
+          {[["coffee", "☕ le café"], ["lunch", "🍫 le chocolat"]].map(([kind, label]) => (
+            <div key={kind}>
+              <b>{prices[kind] ? (prices[kind].perUnit / 100).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 3 }) + " €" : "—"}</b>
+              <small>{label}{prices[kind] ? " · " + prices[kind].buyer + ", " + shortDate(new Date(prices[kind].date)) : " · pas encore connu"}</small>
+            </div>
+          ))}
+        </div>
+        {latest && (
+          <ul className="suggestions light">
+            {stocks.map((stock) => {
+              const suggestion = restockSuggestion(stock, peopleCount, prices);
+              return (
+                <li key={stock.kind}>
+                  {stock.icon} {stock.label} : {suggestion
+                    ? <>≈ <strong>{suggestion.quantity.toLocaleString("fr-FR")}</strong> pour tenir {stock.kind === "friday" ? "4 vendredis" : "4 semaines"}{suggestion.cost !== null ? <> · ≈ <strong>{euro(suggestion.cost)}</strong></> : ""}</>
+                    : "stock suffisant pour 4 semaines"}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section className="panel">
+        <p className="eyebrow">VACANCES ET JOURS FÉRIÉS</p>
+        <h2>Pauses de consommation</h2>
+        <p className="hint">Les jours fériés sont automatiquement retirés des calculs. Ajoute ici les périodes où le groupe ne boit pas de café (vacances, fermeture…).</p>
+        <p className="tiny">Prochains jours fériés : {upcomingHolidays(3, today).map((holiday) => holiday.name + " (" + day(holiday.date) + ")").join(" · ")}</p>
+        {pauses.length > 0 && (
+          <div className="history">
+            {pauses.map((entry) => (
+              <div className={"transaction" + (entry.end < today ? " past" : "")} key={entry.id}>
+                <div>
+                  <strong>{entry.start <= today && today <= entry.end ? "🏖️ En cours · " : ""}Du {day(entry.start)} au {day(entry.end)}</strong>
+                  {entry.note && <p>{entry.note}</p>}
+                </div>
+                <div className="transaction-end"><button className="text-button" disabled={busy} onClick={() => removePause(entry.id)}>Supprimer</button></div>
+              </div>
+            ))}
+          </div>
+        )}
+        <form className="purchase pause-form" onSubmit={addPause}>
+          <div className="date-pair">
+            <label>Du<input type="date" value={pauseForm.start} onChange={(event) => setPauseForm({ ...pauseForm, start: event.target.value, end: pauseForm.end || event.target.value })} required /></label>
+            <label>Au<input type="date" value={pauseForm.end} min={pauseForm.start || undefined} onChange={(event) => setPauseForm({ ...pauseForm, end: event.target.value })} required /></label>
+          </div>
+          <label>Précision (facultatif)<input value={pauseForm.note} onChange={(event) => setPauseForm({ ...pauseForm, note: event.target.value })} placeholder="Ex. vacances de Noël" /></label>
+          <SaveButton busy={busy} done={pauseDone} doneLabel="Pause ajoutée">Ajouter la pause</SaveButton>
+        </form>
+      </section>
+
       <section className="panel">
         <p className="eyebrow">NOTIFICATIONS</p>
         <h2>Alerte avant la rupture</h2>
