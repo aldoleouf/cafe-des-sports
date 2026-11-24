@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { euro } from "../../lib/format";
 import { consumptionCheck } from "../../lib/stock";
+import { RaceTrack } from "./Visuals";
 import { buyerTotals, monthKey, monthLabel, monthPodium, monthlySpending } from "../../lib/stats";
 
 // Prix moyen d'une unité, sur les achats d'un seul type de produit.
@@ -38,6 +39,13 @@ export default function StatsTab({ data }) {
 
   return (
     <>
+      <section className="panel">
+        <p className="eyebrow">LA COURSE AU COMPTOIR</p>
+        <h2>Qui mène ?</h2>
+        <RaceTrack data={data} />
+        <p className="tiny">Chacun est placé selon son solde : plus on a payé pour le groupe, plus on est devant.</p>
+      </section>
+
       <section className="panel">
         <p className="eyebrow">PODIUM DE {monthLabel(monthKey(new Date()), "long").toUpperCase()}</p>
         <h2>Les plus gros acheteurs</h2>

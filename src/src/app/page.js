@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { INITIAL, normalizeData, nextBuyerOf } from "../lib/ledger";
-import { stockOverview } from "../lib/stock";
+import { stockOverview, localDateKey, pauseOn } from "../lib/stock";
 import { shareRecap } from "../lib/recap";
 import { usePushAlerts } from "./components/usePushAlerts";
 import ComptesTab from "./components/ComptesTab";
@@ -52,10 +52,18 @@ export default function Home() {
   const [sugar, setSugar] = useState(null);
   const [coins, setCoins] = useState(null);
   const [night, setNight] = useState(false);
+  const [friday, setFriday] = useState(false);
+  const [today, setToday] = useState("");
 
-  // Après 18 h (et avant 6 h), l'en-tête passe en mode nuit.
+  // Après 18 h (et avant 6 h), l'en-tête passe en mode nuit ; le vendredi, chocolat dans l'en-tête.
   useEffect(() => {
-    const update = () => { const hour = new Date().getHours(); setNight(hour >= 18 || hour < 6); };
+    const update = () => {
+      const now = new Date();
+      const hour = now.getHours();
+      setNight(hour >= 18 || hour < 6);
+      setFriday(now.getDay() === 5);
+      setToday(localDateKey(now));
+    };
     update();
     const timer = setInterval(update, 60000);
     return () => clearInterval(timer);
@@ -181,6 +189,8 @@ export default function Home() {
 
   const nextBuyer = useMemo(() => nextBuyerOf(data), [data]);
   const stocks = useMemo(() => stockOverview(data), [data]);
+  const holiday = today ? pauseOn(today, data.pauses) : null; // pause du groupe en cours
+  const tabIndex = TABS.findIndex(([key]) => key === tab);
   const defaultItem = useMemo(() => suggestedItem({ ...data, reserve }, stocks), [data, reserve, stocks]);
 
   const toggleReserve = async (value) => {
@@ -208,23 +218,35 @@ export default function Home() {
 
   return (
     <main className="shell">
-      <header className={"hero" + (night ? " night" : "")}>
-        <div className="emblem">
-          {night
-            ? <span className="moon" aria-hidden="true">🌙</span>
-            : <span className="steam" aria-hidden="true"><i /><i /><i /></span>}
-          <Sugar drop={sugar} />
-          ☕
+      <header className={"hero" + (night ? " night" : "") + (holiday ? " on-holiday" : "")}>
+        {friday && !holiday && (
+          <span className="friday-treats" aria-hidden="true">
+            {[[34, 14], [52, 62], [68, 22], [80, 70], [92, 38]].map(([x, y], i) => <i key={i} style={{ "--i": i, "--x": x + "%", "--y": y + "%" }}>🍫</i>)}
+          </span>
+        )}
+        <div className="emblem" title={holiday ? "Pause" + (holiday.note ? " : " + holiday.note : "") : undefined}>
+          {holiday ? (
+            <><span className="parasol" aria-hidden="true">⛱️</span><span className="deckchair">🏖️</span></>
+          ) : (
+            <>
+              {night
+                ? <span className="moon" aria-hidden="true">🌙</span>
+                : <span className="steam" aria-hidden="true"><i /><i /><i /></span>}
+              <Sugar drop={sugar} />
+              ☕
+            </>
+          )}
         </div>
         <div>
           <p className="eyebrow">LE COMPTOIR DES COPAINS</p>
           <h1>Café <span>des sports</span></h1>
-          <p className="subtitle">{night ? "Le comptoir ferme pour ce soir. À demain !" : "Les comptes du café et du chocolat, entre nous."}</p>
+          <p className="subtitle">{holiday ? "Le comptoir est en vacances" + (holiday.note ? " (" + holiday.note + ")" : "") + ". Bon repos !" : night ? "Le comptoir ferme pour ce soir. À demain !" : friday ? "C'est vendredi : place au chocolat !" : "Les comptes du café et du chocolat, entre nous."}</p>
         </div>
         <div className="ball" key={tab} aria-hidden="true">⚽</div>
       </header>
 
-      <div className="tabs">
+      <div className="tabs" style={{ "--count": TABS.length, "--index": tabIndex }}>
+        <span className="tab-indicator" aria-hidden="true"><i key={tab} /></span>
         {TABS.map(([key, icon, label]) => (
           <button key={key} className={tab === key ? "active" : ""} onClick={() => { goTo(key); if (key !== "achat") setEditing(null); }}>
             <span className="tab-icon" aria-hidden="true">{icon}</span>

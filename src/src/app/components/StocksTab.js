@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { STOCK_KINDS, localDateKey, referencePrices, restockSuggestion, upcomingHolidays } from "../../lib/stock";
+import { useEffect, useState } from "react";
+import { STOCK_KINDS, dailyStockRate, localDateKey, referencePrices, restockSuggestion, upcomingHolidays } from "../../lib/stock";
+import { CoffeeJar, ChocolateBar, DeliveryTruck } from "./Visuals";
+
+const SEEN_KEY = "cafe-des-sports:livraisons-vues";
 import { newId } from "../../lib/ledger";
 import { parseNumber, euro, shortDate } from "../../lib/format";
 import SaveButton, { flashDone } from "./SaveButton";
@@ -20,6 +23,31 @@ export default function StocksTab({ data, stocks, busy, mutate, push }) {
   const [done, setDone] = useState(false);
   const [pauseForm, setPauseForm] = useState({ start: "", end: "", note: "" });
   const [pauseDone, setPauseDone] = useState(false);
+  const [trucks, setTrucks] = useState({});
+
+  // Camion de livraison : une fois par achat ayant ajouté du stock (le sien ou celui d'un autre),
+  // la première fois qu'on voit l'onglet Stocks après, pendant une semaine au plus.
+  useEffect(() => {
+    const latest = {};
+    data.transactions.forEach((transaction) => Object.keys(STOCK_KINDS).forEach((kind) => {
+      if (!latest[kind] && Number(transaction.stockAdded?.[kind]) > 0) latest[kind] = transaction;
+    }));
+    let seen = {};
+    try { seen = JSON.parse(localStorage.getItem(SEEN_KEY) || "{}"); } catch {}
+    const weekAgo = Date.now() - 7 * 864e5;
+    const fresh = {};
+    Object.entries(latest).forEach(([kind, transaction]) => {
+      if (seen[kind] !== transaction.id && new Date(transaction.date).getTime() > weekAgo) {
+        fresh[kind] = { quantity: Number(transaction.stockAdded[kind]), key: transaction.id };
+      }
+      seen[kind] = transaction.id;
+    });
+    try { localStorage.setItem(SEEN_KEY, JSON.stringify(seen)); } catch {}
+    if (!Object.keys(fresh).length) return;
+    setTrucks(fresh);
+    const timer = setTimeout(() => setTrucks({}), 2800);
+    return () => clearTimeout(timer);
+  }, [data.transactions]);
   const prices = referencePrices(data.transactions);
   const today = localDateKey();
   const pauses = [...(data.pauses || [])].sort((a, b) => a.start.localeCompare(b.start));
@@ -64,7 +92,13 @@ export default function StocksTab({ data, stocks, busy, mutate, push }) {
         <div className="stock-grid">
           {stocks.map((stock) => (
             <div className={"stock-card" + (stock.value !== null && stock.value <= 0 ? " out" : stock.low ? " alert" : "")} key={stock.kind}>
+              {trucks[stock.kind] && <DeliveryTruck key={trucks[stock.kind].key} quantity={trucks[stock.kind].quantity} />}
               <div className="stock-card-title"><span>{stock.icon}</span><strong>{stock.label}</strong></div>
+              <div className="stock-visual">
+                {stock.kind === "coffee"
+                  ? <CoffeeJar value={stock.value} capacity={STOCK_KINDS.coffee.restockDays * dailyStockRate("coffee", peopleCount)} />
+                  : <ChocolateBar days={stock.value === null ? 0 : stock.depletion?.consumptionDays ?? 0} squares={STOCK_KINDS[stock.kind].restockDays} />}
+              </div>
               {stock.value === null ? <b className="stock-number">—</b> : <b className={"stock-number " + (stock.value <= 0 ? "negative" : stock.low ? "low" : "positive")}>{stock.value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}</b>}
               <small>{stock.value === null ? "En attente du premier relevé" : stock.low ? "unités restantes · à racheter" : "unités estimées restantes"}</small>
               <p>{RATES[stock.kind][0]} · {RATES[stock.kind][1]}</p>
