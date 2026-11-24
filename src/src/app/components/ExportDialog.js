@@ -7,7 +7,9 @@ import { accountsText, accountsHtml } from "../../lib/export";
 export default function ExportDialog({ data, open, onClose }) {
   const dialog = useRef(null);
   const [copied, setCopied] = useState(false);
-  const text = accountsText(data);
+  // Calculé seulement à l'ouverture : le texte contient la date du jour, qui différerait
+  // entre la page pré-générée au déploiement et le navigateur.
+  const text = open ? accountsText(data) : "";
 
   useEffect(() => {
     const element = dialog.current;

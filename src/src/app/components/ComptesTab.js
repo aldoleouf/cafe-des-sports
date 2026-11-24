@@ -8,6 +8,7 @@ import { referencePrices, restockSuggestion } from "../../lib/stock";
 import { averagePurchase, wentAheadThisMonth } from "../../lib/stats";
 import { pause } from "./SaveButton";
 import PersonSheet from "./PersonSheet";
+import { BalanceScale } from "./Visuals";
 
 export default function ComptesTab({ data, stocks, nextBuyer, reserve, toggleReserve, busy, mutate, flash }) {
   const [newPerson, setNewPerson] = useState("");
@@ -75,6 +76,11 @@ export default function ComptesTab({ data, stocks, nextBuyer, reserve, toggleRes
             )}
           </>
         ) : <h2>Tout le monde est à jour !</h2>}
+      </section>
+
+      <section className="panel">
+        <p className="eyebrow">LA BALANCE DU COMPTOIR</p>
+        <BalanceScale data={data} average={average} />
       </section>
 
       <section className="panel">
