@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { euro, dateLabel, parseNumber } from "../../lib/format";
 import { newId } from "../../lib/ledger";
+import SaveButton, { flashDone, pause } from "./SaveButton";
 
 const totalsFrom = (advanceHistory) => {
   const advances = {};
@@ -15,6 +16,8 @@ export default function AvancesTab({ data, busy, mutate }) {
   const [holder, setHolder] = useState(data.people.includes("Antoine") ? "Antoine" : data.people[0] || "");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  const [done, setDone] = useState(false);
+  const [leaving, setLeaving] = useState([]);
   const totalAdvance = Object.values(data.advances || {}).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
   const available = data.advanceHistory.filter((entry) => entry.remaining > 0);
 
@@ -27,7 +30,7 @@ export default function AvancesTab({ data, busy, mutate }) {
       const advanceHistory = [entry, ...state.advanceHistory];
       return { ...state, advanceHistory, advances: totalsFrom(advanceHistory) };
     });
-    if (ok) { setAmount(""); setNote(""); }
+    if (ok) { setAmount(""); setNote(""); flashDone(setDone); }
   };
 
   const deleteAdvance = async (entry) => {
@@ -36,13 +39,16 @@ export default function AvancesTab({ data, busy, mutate }) {
       return;
     }
     if (!confirm("Supprimer cette avance de " + euro(entry.amount) + " de " + entry.person + " remise à " + entry.holder + " ?")) return;
-    await mutate((state) => {
+    setLeaving((ids) => [...ids, entry.id]);
+    await pause(320);
+    const ok = await mutate((state) => {
       const current = state.advanceHistory.find((item) => item.id === entry.id);
       if (!current) return "Cette avance a déjà été supprimée.";
       if (current.amount - current.remaining > 0) return "Cette avance vient d'être utilisée pour un achat.";
       const advanceHistory = state.advanceHistory.filter((item) => item.id !== entry.id);
       return { ...state, advanceHistory, advances: totalsFrom(advanceHistory) };
     });
+    if (!ok) setLeaving((ids) => ids.filter((id) => id !== entry.id));
   };
 
   return (
@@ -89,7 +95,7 @@ export default function AvancesTab({ data, busy, mutate }) {
             <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ex. virement pour le café" />
           </label>
           <p className="hint">L'argent reste la propriété de la personne qui fait l'avance. Le détenteur est simplement celui qui garde la somme pour les prochains achats. Lorsqu'elle est utilisée, la dépense commune est comptabilisée au nom de la personne qui a avancé l'argent.</p>
-          <button className="primary wide" type="submit" disabled={busy}>{busy ? "Enregistrement…" : "Enregistrer l'avance"}</button>
+          <SaveButton busy={busy} done={done} doneLabel="Avance enregistrée">Enregistrer l'avance</SaveButton>
         </form>
       </section>
 
@@ -114,7 +120,7 @@ export default function AvancesTab({ data, busy, mutate }) {
             {data.advanceHistory.map((entry) => {
               const used = Math.max(0, entry.amount - entry.remaining);
               return (
-                <div className="transaction" key={entry.id}>
+                <div className={"transaction" + (leaving.includes(entry.id) ? " leaving" : "")} key={entry.id}>
                   <div>
                     <strong>{entry.person} a remis {euro(entry.amount)}</strong>
                     <p>Argent détenu par {entry.holder}{entry.note ? " · " + entry.note : ""}</p>

@@ -4,11 +4,13 @@ import { useState } from "react";
 import { euro, signed, target } from "../../lib/format";
 import { addPerson, removePerson, restorePerson } from "../../lib/ledger";
 import { purchaseAdvice } from "../../lib/recap";
+import { pause } from "./SaveButton";
 
-export default function ComptesTab({ data, stocks, nextBuyer, reserve, toggleReserve, busy, mutate }) {
+export default function ComptesTab({ data, stocks, nextBuyer, reserve, toggleReserve, busy, mutate, flash }) {
   const [newPerson, setNewPerson] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [managing, setManaging] = useState(false);
+  const [leaving, setLeaving] = useState(null);
   const count = data.people.length;
   const latestStock = data.stockHistory?.[0] || null;
   const lowStocks = stocks.filter((stock) => stock.low);
@@ -28,7 +30,10 @@ export default function ComptesTab({ data, stocks, nextBuyer, reserve, toggleRes
       ? "\n\nSon solde de " + signed(balance) + " sera gelé : réglez-le entre vous en direct. Il ne participera plus aux achats ni aux stocks, mais reste dans l'historique et pourra être réactivé."
       : "\n\nIl ne participera plus aux achats ni aux stocks.";
     if (!confirm("Retirer " + person + " du groupe ?" + warning)) return;
+    setLeaving(person);
+    await pause(320);
     await mutate((state) => removePerson(state, person));
+    setLeaving(null);
   };
 
   return (
@@ -65,7 +70,7 @@ export default function ComptesTab({ data, stocks, nextBuyer, reserve, toggleRes
           {data.people.map((person) => {
             const bal = data.balances[person] || 0;
             return (
-              <div className="person" key={person}>
+              <div className={"person" + (leaving === person ? " leaving" : "")} key={person}>
                 <div className={"avatar " + (bal < 0 ? "late" : bal > 0 ? "ahead" : "")} aria-hidden="true">{person.charAt(0).toUpperCase()}</div>
                 <div className="person-main">
                   <strong>{person}</strong>
@@ -73,7 +78,7 @@ export default function ComptesTab({ data, stocks, nextBuyer, reserve, toggleRes
                   <span className="meter"><i className={bal < 0 ? "late" : "ahead"} style={{ width: Math.round(Math.abs(bal) / maxAbs * 100) + "%" }} /></span>
                 </div>
                 <div className="balance">
-                  <b className={bal < 0 ? "negative" : bal > 0 ? "positive" : ""}>{signed(bal)}</b>
+                  <b key={flash.names.includes(person) ? "flash-" + flash.key : "still"} className={(bal < 0 ? "negative" : bal > 0 ? "positive" : "") + (flash.names.includes(person) ? " flash" : "")}>{signed(bal)}</b>
                   {bal < 0 && <small className="target">À dépenser : {euro(target(bal, count))}</small>}
                   {managing && <button className="text-button" disabled={busy || count <= 1} onClick={() => remove(person)}>Retirer</button>}
                 </div>

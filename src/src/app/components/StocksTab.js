@@ -4,6 +4,7 @@ import { useState } from "react";
 import { STOCK_KINDS, localDateKey } from "../../lib/stock";
 import { newId } from "../../lib/ledger";
 import { parseNumber } from "../../lib/format";
+import SaveButton, { flashDone } from "./SaveButton";
 
 const RATES = {
   coffee: ["2 par personne", "Du lundi au vendredi"],
@@ -16,6 +17,7 @@ const alertRule = (kind) => kind === "friday"
 
 export default function StocksTab({ data, stocks, busy, mutate, push }) {
   const [values, setValues] = useState({ coffee: "", lunch: "", friday: "" });
+  const [done, setDone] = useState(false);
   const latest = data.stockHistory?.[0] || null;
   const peopleCount = data.people.length;
 
@@ -27,7 +29,7 @@ export default function StocksTab({ data, stocks, busy, mutate, push }) {
     }
     const snapshot = { id: newId(), date: localDateKey(), ...numbers, peopleCount, recordedAt: new Date().toISOString() };
     const ok = await mutate((state) => ({ ...state, stockHistory: [snapshot, ...(state.stockHistory || [])] }));
-    if (ok) setValues({ coffee: "", lunch: "", friday: "" });
+    if (ok) { setValues({ coffee: "", lunch: "", friday: "" }); flashDone(setDone); }
   };
 
   return (
@@ -43,7 +45,7 @@ export default function StocksTab({ data, stocks, busy, mutate, push }) {
         <h2>Ce qu'il reste</h2>
         <div className="stock-grid">
           {stocks.map((stock) => (
-            <div className={"stock-card" + (stock.low ? " alert" : "")} key={stock.kind}>
+            <div className={"stock-card" + (stock.value !== null && stock.value <= 0 ? " out" : stock.low ? " alert" : "")} key={stock.kind}>
               <div className="stock-card-title"><span>{stock.icon}</span><strong>{stock.label}</strong></div>
               {stock.value === null ? <b className="stock-number">—</b> : <b className={"stock-number " + (stock.value <= 0 ? "negative" : stock.low ? "low" : "positive")}>{stock.value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}</b>}
               <small>{stock.value === null ? "En attente du premier relevé" : stock.low ? "unités restantes · à racheter" : "unités estimées restantes"}</small>
@@ -89,7 +91,7 @@ export default function StocksTab({ data, stocks, busy, mutate, push }) {
               <input inputMode="decimal" value={values[key]} onChange={(event) => setValues({ ...values, [key]: event.target.value })} placeholder={placeholder} required />
             </label>
           ))}
-          <button className="primary wide" type="submit" disabled={busy}>{busy ? "Enregistrement…" : "Enregistrer le relevé"}</button>
+          <SaveButton busy={busy} done={done} doneLabel="Relevé enregistré">Enregistrer le relevé</SaveButton>
         </form>
       </section>
       <section className="panel">

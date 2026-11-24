@@ -1,14 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import { euro, dateLabel } from "../../lib/format";
+import { pause } from "./SaveButton";
 import { revertPurchase } from "../../lib/ledger";
 
 const STOCK_LABELS = [["coffee", "☕"], ["lunch", "🍫 midi"], ["friday", "🍫 vendredi"]];
 
 export default function HistoriqueTab({ data, busy, mutate, onEdit }) {
+  const [leaving, setLeaving] = useState([]);
   const cancel = async (transaction) => {
     if (!confirm("Annuler l'achat de " + transaction.buyer + " (" + euro(transaction.amount) + ", " + dateLabel(transaction.date) + ") ?")) return;
-    await mutate((state) => revertPurchase(state, transaction.id));
+    setLeaving((ids) => [...ids, transaction.id]);
+    await pause(320); // le temps que la ligne se replie
+    if (!(await mutate((state) => revertPurchase(state, transaction.id)))) {
+      setLeaving((ids) => ids.filter((id) => id !== transaction.id));
+    }
   };
 
   return (
@@ -22,7 +29,7 @@ export default function HistoriqueTab({ data, busy, mutate, onEdit }) {
             // Les anciens achats financés par une avance sans identifiant ne peuvent qu'être annulés.
             const editable = !(transaction.advanceUsed > 0 && !transaction.advanceId);
             return (
-              <div className="transaction" key={transaction.id}>
+              <div className={"transaction" + (leaving.includes(transaction.id) ? " leaving" : "")} key={transaction.id}>
                 <div>
                   <strong>{transaction.buyer}</strong>
                   <p>{transaction.item}{transaction.note ? " · " + transaction.note : ""}</p>
