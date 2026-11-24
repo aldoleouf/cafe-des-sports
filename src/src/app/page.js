@@ -10,6 +10,7 @@ import AchatTab from "./components/AchatTab";
 import HistoriqueTab from "./components/HistoriqueTab";
 import AvancesTab from "./components/AvancesTab";
 import StocksTab from "./components/StocksTab";
+import ExportDialog from "./components/ExportDialog";
 
 const TABS = [
   ["comptes", "🧾", "Comptes"],
@@ -139,6 +140,7 @@ export default function Home() {
     setTab("historique");
   };
 
+  const [exporting, setExporting] = useState(false);
   const [sharing, setSharing] = useState(false);
   const share = async () => {
     setSharing(true);
@@ -187,8 +189,10 @@ export default function Home() {
       <footer>
         <span className="sync">{busy ? "● Enregistrement…" : message || "● Suivi partagé"}</span>
         <button className="share-button" onClick={share} disabled={sharing}>{sharing ? "Préparation…" : "📸 Partager le récapitulatif"}</button>
+        <button className="share-button secondary" onClick={() => setExporting(true)}>📋 Tableau texte</button>
         <button className="text-button" onClick={refresh}>Actualiser</button>
       </footer>
+      <ExportDialog data={data} open={exporting} onClose={() => setExporting(false)} />
     </main>
   );
 }
