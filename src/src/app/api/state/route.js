@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { loadOrImport, setJson } from "../../../lib/redis";
+import { loadOrImport, setJson, withLock } from "../../../lib/redis";
 import { checkStockAlerts } from "../../../lib/push";
 export const dynamic = "force-dynamic";
 // Comptes partagés : clé cafe-des-sports:state dans Upstash Redis.
 // Repris une fois depuis l'ancien store Vercel Blob s'il n'existe pas encore ;
 // tant que ce store est inaccessible, lecture et écriture renvoient 503 pour ne rien écraser.
 const KEY = "cafe-des-sports:state";
+const LOCK = "cafe-des-sports:state:lock";
 const BLOB_KEY = "cafe-des-sports/state.json";
 async function fromBlob() {
   const { list } = await import("@vercel/blob");
@@ -23,32 +24,42 @@ const fail = (error, fallback) => NextResponse.json(
 const INITIAL = {
   people: ["Antoine", "Gilles", "Julien", "Pascal", "Seb"],
   balances: { Antoine: -263, Gilles: -143, Julien: -1874, Pascal: -429, Seb: 2709 },
-  transactions: [], reserve: ["Café"], advances: {}, advanceHistory: [], stockHistory: [], updatedAt: null
+  archived: [], transactions: [], reserve: ["Café"], advances: {}, advanceHistory: [], stockHistory: [], updatedAt: null
 };
+const withDefaults = (value) => ({
+  ...INITIAL, ...value,
+  archived: value.archived || [], advances: value.advances || {}, advanceHistory: value.advanceHistory || [], stockHistory: value.stockHistory || []
+});
 export async function GET() {
   try {
     const value = await loadOrImport(KEY, fromBlob);
     if (!value) return NextResponse.json(INITIAL, { headers: { "Cache-Control": "no-store" } });
-    return NextResponse.json({
-      ...INITIAL, ...value,
-      advances: value.advances || {}, advanceHistory: value.advanceHistory || [], stockHistory: value.stockHistory || []
-    }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(withDefaults(value), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return fail(error, "Impossible de lire les comptes partagés");
   }
 }
 export async function POST(request) {
   try {
-    const state = await request.json();
-    if (!state || !Array.isArray(state.people) || typeof state.balances !== "object" || !Array.isArray(state.transactions)) {
+    const body = await request.json();
+    // baseUpdatedAt : version des comptes sur laquelle l'appareil a fait sa saisie.
+    const { baseUpdatedAt, ...state } = body || {};
+    if (!Array.isArray(state.people) || !state.balances || typeof state.balances !== "object" || !Array.isArray(state.transactions)) {
       return NextResponse.json({ error: "Données invalides" }, { status: 400 });
     }
-    await loadOrImport(KEY, fromBlob); // la reprise depuis Blob doit avoir eu lieu avant d'écrire
-    const updatedAt = new Date().toISOString();
-    const saved = {
-      ...INITIAL, ...state, advances: state.advances || {}, advanceHistory: state.advanceHistory || [], stockHistory: state.stockHistory || [], updatedAt
-    };
-    await setJson(KEY, saved);
+    const result = await withLock(LOCK, async () => {
+      const current = await loadOrImport(KEY, fromBlob); // la reprise depuis Blob doit avoir eu lieu avant d'écrire
+      // Quelqu'un a enregistré depuis le chargement : on refuse, l'appareil rejoue sa saisie sur l'état à jour.
+      if (current && current.updatedAt && baseUpdatedAt !== current.updatedAt) return { conflict: withDefaults(current) };
+      const saved = { ...withDefaults(state), updatedAt: new Date().toISOString() };
+      await setJson(KEY, saved);
+      return { saved };
+    });
+    if (result.conflict) {
+      return NextResponse.json({ error: "Les comptes ont été modifiés entre-temps", state: result.conflict }, { status: 409 });
+    }
+    const { saved } = result;
+    const { updatedAt } = saved;
     // Un relevé de stock peut faire passer un produit sous un jour de consommation.
     await checkStockAlerts(saved).catch((error) => console.error("Alerte de stock impossible :", error && error.message));
     return NextResponse.json({ ok: true, updatedAt });

@@ -71,16 +71,29 @@ export function estimateStockDepletion(stock, kind, peopleCount, today = localDa
   return null;
 }
 
+// Seuil d'alerte unique pour toute l'application (onglets Comptes et Stocks,
+// récapitulatif partagé, notifications) : alertDays jours de consommation.
+export const stockThreshold = (kind, peopleCount) => STOCK_KINDS[kind].alertDays * dailyStockRate(kind, peopleCount);
+export const isLowStock = (value, kind, peopleCount) => value !== null && value < stockThreshold(kind, peopleCount);
+
+// État de chaque produit à partir du dernier relevé : quantité estimée, alerte, date de fin.
+export function stockOverview(state, today = localDateKey()) {
+  const snapshot = state?.stockHistory?.[0] || null;
+  const peopleCount = Array.isArray(state?.people) ? state.people.length : 0;
+  return Object.keys(STOCK_KINDS).map((kind) => {
+    const value = estimatedStock(snapshot, state?.transactions, kind, peopleCount, today);
+    return {
+      kind, ...STOCK_KINDS[kind], value,
+      low: peopleCount > 0 && isLowStock(value, kind, peopleCount),
+      depletion: estimateStockDepletion(value, kind, peopleCount, today)
+    };
+  });
+}
+
 // Produits dont le stock couvre moins de alertDays jours de consommation (ou en rupture).
 export function lowStocks(state, today = localDateKey()) {
-  const snapshot = state?.stockHistory?.[0];
-  const peopleCount = Array.isArray(state?.people) ? state.people.length : 0;
-  if (!snapshot || peopleCount <= 0) return [];
-  return Object.keys(STOCK_KINDS).flatMap((kind) => {
-    const value = estimatedStock(snapshot, state.transactions, kind, peopleCount, today);
-    if (value === null || value >= STOCK_KINDS[kind].alertDays * dailyStockRate(kind, peopleCount)) return [];
-    const depletion = estimateStockDepletion(value, kind, peopleCount, today);
-    if (!depletion) return [];
-    return [{ kind, ...STOCK_KINDS[kind], value, days: depletion.consumptionDays, lastDay: depletion.date }];
-  });
+  if (!state?.stockHistory?.[0]) return [];
+  return stockOverview(state, today)
+    .filter((stock) => stock.low && stock.depletion)
+    .map(({ depletion, low, ...stock }) => ({ ...stock, days: depletion.consumptionDays, lastDay: depletion.date }));
 }
