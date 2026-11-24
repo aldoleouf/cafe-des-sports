@@ -24,11 +24,11 @@ const fail = (error, fallback) => NextResponse.json(
 const INITIAL = {
   people: ["Antoine", "Gilles", "Julien", "Pascal", "Seb"],
   balances: { Antoine: -263, Gilles: -143, Julien: -1874, Pascal: -429, Seb: 2709 },
-  archived: [], transactions: [], reserve: ["Café"], advances: {}, advanceHistory: [], stockHistory: [], updatedAt: null
+  archived: [], transactions: [], reserve: ["Café"], advances: {}, advanceHistory: [], stockHistory: [], pauses: [], updatedAt: null
 };
 const withDefaults = (value) => ({
   ...INITIAL, ...value,
-  archived: value.archived || [], advances: value.advances || {}, advanceHistory: value.advanceHistory || [], stockHistory: value.stockHistory || []
+  archived: value.archived || [], advances: value.advances || {}, advanceHistory: value.advanceHistory || [], stockHistory: value.stockHistory || [], pauses: value.pauses || []
 });
 export async function GET() {
   try {

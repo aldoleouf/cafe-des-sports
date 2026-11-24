@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { euro, centsToInput, parseNumber, dateLabel } from "../../lib/format";
 import { applyPurchase, editPurchase, newId } from "../../lib/ledger";
+import SaveButton, { flashDone } from "./SaveButton";
 
 const QUANTITY_FIELDS = [
   ["coffee", "☕ Nombre de cafés ajoutés"],
@@ -18,7 +19,7 @@ const FIELDS_BY_ITEM = {
 };
 const NO_STOCK = { coffee: "0", lunch: "0", friday: "0" };
 
-export default function AchatTab({ data, busy, mutate, editing, onDoneEditing, defaultBuyer, defaultItem }) {
+export default function AchatTab({ data, busy, mutate, editing, onDoneEditing, defaultBuyer, defaultItem, onSaved }) {
   const blank = () => ({
     buyer: defaultBuyer, amount: "", item: defaultItem, note: "", excluded: [], advanceFrom: "", added: NO_STOCK
   });
@@ -33,6 +34,7 @@ export default function AchatTab({ data, busy, mutate, editing, onDoneEditing, d
   });
   const [form, setForm] = useState(() => editing ? fromTransaction(editing) : blank());
   const [touched, setTouched] = useState(false);
+  const [done, setDone] = useState(false);
   const set = (changes) => setForm((current) => ({ ...current, ...changes }));
 
   useEffect(() => {
@@ -73,7 +75,7 @@ export default function AchatTab({ data, busy, mutate, editing, onDoneEditing, d
     const ok = await mutate((state) => editing ? editPurchase(state, editing.id, input) : applyPurchase(state, input));
     if (!ok) return;
     if (editing) onDoneEditing();
-    else { setForm(blank()); setTouched(false); }
+    else { setForm(blank()); setTouched(false); flashDone(setDone); onSaved?.(input); }
   };
 
   return (
@@ -134,7 +136,7 @@ export default function AchatTab({ data, busy, mutate, editing, onDoneEditing, d
         <label>Précision (facultatif)
           <input value={form.note} onChange={(event) => set({ note: event.target.value })} placeholder="Ex. deux cafés, un chocolat" />
         </label>
-        <button className="primary wide" type="submit" disabled={busy}>{busy ? "Enregistrement…" : editing ? "Enregistrer la modification" : "Enregistrer l'achat"}</button>
+        <SaveButton busy={busy} done={done} doneLabel="Achat enregistré">{editing ? "Enregistrer la modification" : "Enregistrer l'achat"}</SaveButton>
         {editing && <button type="button" className="text-button" onClick={onDoneEditing}>Abandonner la modification</button>}
       </form>
     </section>

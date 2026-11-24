@@ -11,6 +11,7 @@ export const INITIAL = {
   advances: {},
   advanceHistory: [],
   stockHistory: [],
+  pauses: [],
   updatedAt: null
 };
 
@@ -46,6 +47,7 @@ export function normalizeData(value) {
     transactions: Array.isArray(value?.transactions) ? value.transactions : [],
     reserve: Array.isArray(value?.reserve) ? value.reserve : ["Café"],
     stockHistory: Array.isArray(value?.stockHistory) ? value.stockHistory : [],
+    pauses: Array.isArray(value?.pauses) ? value.pauses : [],
     advances: advancesFrom(advanceHistory), advanceHistory
   };
 }
