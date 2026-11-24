@@ -376,3 +376,23 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
 }
 
 .push-status { font-weight: 700; margin: 12px 0 4px; }
+
+/* ---------- Gestion des membres ---------- */
+.head-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.small-button.on { background: var(--brown); color: #fffaf0; border-color: var(--brown); }
+.balance .text-button { display: block; margin-left: auto; padding-bottom: 0; }
+.archived { margin-top: 10px; padding-top: 14px; border-top: 1px dashed var(--line); }
+.archived-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; padding: 4px 0; }
+.archived-row small { color: var(--muted); }
+.archived-row .text-button { color: var(--green); }
+
+/* ---------- Achat : participants et modification ---------- */
+.field-title { font-size: 12px; font-weight: 700; color: var(--brown); margin: 0 0 8px; }
+.participants .hint { margin-bottom: 0; }
+.editing-banner { background: var(--chip); border-left: 3px solid var(--gold); border-radius: 8px; padding: 9px 11px; color: var(--ink); }
+.transaction-end .text-button { display: block; margin-left: auto; }
+.text-button.edit { color: var(--brown); }
+.advance-detail.muted { color: var(--muted); }
+
+/* ---------- Stocks sous le seuil d'alerte ---------- */
+.stock-card.alert { border-color: #c07a22; box-shadow: inset 0 0 0 1px #c07a2255; }

@@ -13,3 +13,14 @@ Une notification push est envoyée aux appareils abonnés (onglet Stocks → « 
 Rien à configurer : les clés de notification sont créées automatiquement et gardées dans Upstash Redis.
 
 Sur iPhone, les notifications ne marchent que depuis l'app ajoutée à l'écran d'accueil (iOS 16.4+).
+
+## Enregistrements simultanés
+
+Chaque appareil envoie la version des comptes sur laquelle il a fait sa saisie (`baseUpdatedAt`). Si quelqu'un a enregistré entre-temps, le serveur répond 409 avec les comptes à jour, et l'application rejoue automatiquement la saisie dessus : aucune saisie n'est écrasée.
+
+## Organisation du code
+
+- `src/src/lib/ledger.js` : calcul des comptes (achat, modification, annulation, membres).
+- `src/src/lib/stock.js` : stocks et seuil d'alerte unique (`alertDays`).
+- `src/src/lib/recap.js` : image du récapitulatif partagé.
+- `src/src/app/components/` : un composant par onglet.

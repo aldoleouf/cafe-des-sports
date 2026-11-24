@@ -46,3 +46,19 @@ export async function loadOrImport(key, importFn) {
   if (imported != null) await setJson(key, imported);
   return imported;
 }
+
+// Verrou court pour que deux enregistrements simultanés ne se croisent pas
+// entre la vérification de version et l'écriture.
+export async function withLock(key, fn, { ttlMs = 5000, waitMs = 4000 } = {}) {
+  const token = Math.random().toString(36).slice(2);
+  const deadline = Date.now() + waitMs;
+  while ((await redis('SET', key, token, 'NX', 'PX', ttlMs)) !== 'OK') {
+    if (Date.now() > deadline) throw Object.assign(new Error('Enregistrement en cours ailleurs, réessaie.'), { status: 503 });
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
+  try {
+    return await fn();
+  } finally {
+    if ((await redis('GET', key).catch(() => null)) === token) await redis('DEL', key).catch(() => {});
+  }
+}
